@@ -18,10 +18,7 @@ target_include_directories(phantom_link_rx PRIVATE
     ${PICO_SDK_PATH}/lib/cyw43-driver/src
 )
 
-target_link_libraries(phantom_link_rx
-    pico_stdlib
-    pico_cyw43_arch_lwip_poll
-)
+target_link_libraries(phantom_link_rx pico_stdlib pico_cyw43_arch_lwip_poll hardware_spi)
 
 pico_enable_stdio_usb(phantom_link_rx 1)
 pico_enable_stdio_uart(phantom_link_rx 0)

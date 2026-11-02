@@ -15,10 +15,7 @@ add_executable(phantom_link_tx
 # THIS IS THE LINE THAT FIXES THE ERROR:
 target_include_directories(phantom_link_tx PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 
-target_link_libraries(phantom_link_tx
-    pico_stdlib
-    pico_cyw43_arch_lwip_poll
-)
+target_link_libraries(phantom_link_tx pico_stdlib pico_cyw43_arch_lwip_poll hardware_spi)
 
 pico_enable_stdio_usb(phantom_link_tx 1)
 pico_enable_stdio_uart(phantom_link_tx 0)
