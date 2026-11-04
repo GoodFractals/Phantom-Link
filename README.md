@@ -50,3 +50,4 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 - [ ] Implement T9 text-input UI (Alpha/Numeric states) with joystick navigation.
 - [ ] Upgrade payload encryption to Speck Cipher.
 - [ ] Implement MAC-layer steganography (StegoFrameOrder) for stealth signaling.
+- [ ] [Undecided/Optional] Dig up antenna trace and solder intel 2.4 ghz antenna to each Pico to amplify signal.
