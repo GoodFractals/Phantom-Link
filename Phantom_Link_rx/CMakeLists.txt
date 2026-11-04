@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
+
 include(pico_sdk_import.cmake)
 
 project(phantom_link_rx C CXX ASM)
@@ -12,13 +13,17 @@ pico_sdk_init()
 add_executable(phantom_link_rx
     main.c
 )
-# THIS IS THE LINE THAT FIXES THE ERROR:
+
 target_include_directories(phantom_link_rx PRIVATE 
     ${CMAKE_CURRENT_LIST_DIR}
-    ${PICO_SDK_PATH}/lib/cyw43-driver/src
 )
 
-target_link_libraries(phantom_link_rx pico_stdlib pico_cyw43_arch_lwip_poll hardware_spi)
+target_link_libraries(phantom_link_rx 
+    pico_stdlib 
+    pico_cyw43_arch_lwip_poll 
+    hardware_spi 
+    hardware_adc
+)
 
 pico_enable_stdio_usb(phantom_link_rx 1)
 pico_enable_stdio_uart(phantom_link_rx 0)

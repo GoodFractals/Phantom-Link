@@ -6,7 +6,6 @@
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 
-// Pin Definitions for SPI
 #define SPI_PORT spi0
 #define PIN_CLK  18
 #define PIN_MOSI 19
@@ -14,100 +13,111 @@
 #define PIN_DC   16
 #define PIN_CS   17
 
-// --- FONT ARRAY ---
+// Standard 5x7 font, mapped to 8-bit bytes for easy pixel plotting
 const uint8_t font5x7[][5] = {
-    {0x7E, 0x11, 0x11, 0x11, 0x7E}, // A
-    {0x7F, 0x49, 0x49, 0x49, 0x36}, // B
-    {0x3E, 0x41, 0x41, 0x41, 0x22}, // C
-    {0x7F, 0x41, 0x41, 0x22, 0x1C}, // D
-    {0x7F, 0x49, 0x49, 0x49, 0x41}, // E
-    {0x7F, 0x09, 0x09, 0x09, 0x01}, // F
-    {0x3E, 0x41, 0x49, 0x49, 0x7A}, // G
-    {0x7F, 0x08, 0x08, 0x08, 0x7F}, // H
-    {0x00, 0x41, 0x7F, 0x41, 0x00}, // I
-    {0x20, 0x40, 0x41, 0x3F, 0x01}, // J
-    {0x7F, 0x08, 0x14, 0x22, 0x41}, // K
-    {0x7F, 0x40, 0x40, 0x40, 0x40}, // L
-    {0x7F, 0x02, 0x0C, 0x02, 0x7F}, // M
-    {0x7F, 0x04, 0x08, 0x10, 0x7F}, // N
-    {0x3E, 0x41, 0x41, 0x41, 0x3E}, // O
-    {0x7F, 0x09, 0x09, 0x09, 0x06}, // P
-    {0x3E, 0x41, 0x51, 0x21, 0x5E}, // Q
-    {0x7F, 0x09, 0x19, 0x29, 0x46}, // R
-    {0x46, 0x49, 0x49, 0x49, 0x31}, // S
-    {0x01, 0x01, 0x7F, 0x01, 0x01}, // T
-    {0x3F, 0x40, 0x40, 0x40, 0x3F}, // U
-    {0x1F, 0x20, 0x40, 0x20, 0x1F}, // V
-    {0x3F, 0x40, 0x38, 0x40, 0x3F}, // W
-    {0x63, 0x14, 0x08, 0x14, 0x63}, // X
-    {0x07, 0x08, 0x08, 0x08, 0x07}, // Y
-    {0x61, 0x51, 0x49, 0x45, 0x43}  // Z
+    {0x7E, 0x11, 0x11, 0x11, 0x7E}, {0x7F, 0x49, 0x49, 0x49, 0x36}, {0x3E, 0x41, 0x41, 0x41, 0x22}, {0x7F, 0x41, 0x41, 0x22, 0x1C}, 
+    {0x7F, 0x49, 0x49, 0x49, 0x41}, {0x7F, 0x09, 0x09, 0x09, 0x01}, {0x3E, 0x41, 0x49, 0x49, 0x7A}, {0x7F, 0x08, 0x08, 0x08, 0x7F}, 
+    {0x00, 0x41, 0x7F, 0x41, 0x00}, {0x20, 0x40, 0x41, 0x3F, 0x01}, {0x7F, 0x08, 0x14, 0x22, 0x41}, {0x7F, 0x40, 0x40, 0x40, 0x40}, 
+    {0x7F, 0x02, 0x0C, 0x02, 0x7F}, {0x7F, 0x04, 0x08, 0x10, 0x7F}, {0x3E, 0x41, 0x41, 0x41, 0x3E}, {0x7F, 0x09, 0x09, 0x09, 0x06}, 
+    {0x3E, 0x41, 0x51, 0x21, 0x5E}, {0x7F, 0x09, 0x19, 0x29, 0x46}, {0x46, 0x49, 0x49, 0x49, 0x31}, {0x01, 0x01, 0x7F, 0x01, 0x01}, 
+    {0x3F, 0x40, 0x40, 0x40, 0x3F}, {0x1F, 0x20, 0x40, 0x20, 0x1F}, {0x3F, 0x40, 0x38, 0x40, 0x3F}, {0x63, 0x14, 0x08, 0x14, 0x63}, 
+    {0x07, 0x08, 0x08, 0x08, 0x07}, {0x61, 0x51, 0x49, 0x45, 0x43} 
 };
 
-// Helper function to write command or data
+uint8_t oled_buffer[1024];
+
 void oled_write(uint8_t data, bool is_data) {
-    gpio_put(PIN_DC, is_data); // DC high for data, low for command
-    gpio_put(PIN_CS, 0);       // CS low to select chip
+    gpio_put(PIN_DC, is_data);
+    gpio_put(PIN_CS, 0);
     spi_write_blocking(SPI_PORT, &data, 1);
-    gpio_put(PIN_CS, 1);       // CS high to deselect
+    gpio_put(PIN_CS, 1);
 }
 
 void oled_init() {
     spi_init(SPI_PORT, 10 * 1000 * 1000);
     gpio_set_function(PIN_CLK, GPIO_FUNC_SPI);
     gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
-
     gpio_init(PIN_RES); gpio_set_dir(PIN_RES, GPIO_OUT);
     gpio_init(PIN_DC);  gpio_set_dir(PIN_DC, GPIO_OUT);
     gpio_init(PIN_CS);  gpio_set_dir(PIN_CS, GPIO_OUT);
-    gpio_put(PIN_CS, 1); // Deselect initially
+    gpio_put(PIN_CS, 1); 
 
-    // Hardware Reset
     gpio_put(PIN_RES, 1); sleep_ms(10);
     gpio_put(PIN_RES, 0); sleep_ms(10);
     gpio_put(PIN_RES, 1); sleep_ms(10);
 
-    // SH1106 Initialization Sequence
     uint8_t init_cmds[] = {
         0xAE, 0xD5, 0x80, 0xA8, 0x3F, 0xD3, 0x00, 0x40, 0x8D, 0x14,
         0x20, 0x00, 0xA1, 0xC8, 0xDA, 0x12, 0x81, 0xCF, 0xD9, 0xF1,
         0xDB, 0x40, 0xA4, 0xA6, 0xAF
     };
-    for (int i = 0; i < sizeof(init_cmds); i++) {
-        oled_write(init_cmds[i], false);
-    }
+    for (int i = 0; i < sizeof(init_cmds); i++) oled_write(init_cmds[i], false);
+    memset(oled_buffer, 0, sizeof(oled_buffer));
 }
 
-void oled_clear() {
+void oled_show() {
     for (int page = 0; page < 8; page++) {
         oled_write(0xB0 + page, false);
         oled_write(0x02, false); // SH1106 +2 offset
         oled_write(0x10, false);
         for (int col = 0; col < 128; col++) {
-            oled_write(0x00, true);
+            oled_write(oled_buffer[page * 128 + col], true);
         }
     }
 }
 
-void oled_print(char *text) {
-    oled_clear();
-    oled_write(0xB0, false); // Page 0
-    oled_write(0x02, false); // SH1106 +2 offset
-    oled_write(0x10, false); // Higher column
+void oled_clear() {
+    memset(oled_buffer, 0, sizeof(oled_buffer));
+}
 
-    for (int i = 0; text[i] != '\0' && i < 20; i++) {
-        char c = text[i];
-        if (c == ' ') {
-            for(int j=0; j<6; j++) oled_write(0x00, true);
-        } else if (c >= 'A' && c <= 'Z') {
-            int char_index = c - 'A'; // Correctly get the row index for the letter
-            for(int j=0; j<5; j++) {
-                // FIXED: Use two brackets to get the specific pixel byte
-                oled_write(font5x7[char_index][j], true); 
+// --- THE PIXEL ENGINE ---
+// This is the magic. It calculates exactly which byte and bit to set.
+void oled_draw_pixel(int x, int y) {
+    if (x < 0 || x >= 128 || y < 0 || y >= 64) return;
+    oled_buffer[(y / 8) * 128 + x] |= (1 << (y % 8));
+}
+
+void oled_draw_char(int x, int y, char c) {
+    if (c < 'A' || c > 'Z') return;
+    int index = c - 'A';
+    
+    for (int i = 0; i < 5; i++) {
+        uint8_t col_data = font5x7[index][i];
+        for (int j = 0; j < 7; j++) {
+            if (col_data & (1 << j)) {
+                oled_draw_pixel(x + i, y + j);
             }
-            oled_write(0x00, true); // Spacing
         }
     }
 }
 
+void oled_draw_string(int x, int y, char *text) {
+    for (int i = 0; text[i] != '\0'; i++) {
+        oled_draw_char(x + (i * 6), y, text[i]);
+    }
+}
+
+void oled_draw_box(int x, int y, int w, int h) {
+    for(int i=x; i<x+w; i++) {
+        oled_draw_pixel(i, y);
+        oled_draw_pixel(i, y+h);
+    }
+    for(int i=y; i<=y+h; i++) {
+        oled_draw_pixel(x, i);
+        oled_draw_pixel(x+w, i);
+    }
+}
+
+void oled_draw_bitmap(int x, int y, int w, int h, const unsigned char *bitmap) {
+    int bytes_per_row = (w + 7) / 8;
+    for (int row = 0; row < h; row++) {
+        for (int col = 0; col < w; col++) {
+            int byte_index = row * bytes_per_row + (col / 8);
+            int bit_index = 7 - (col % 8);
+            if (bitmap[byte_index] & (1 << bit_index)) {
+                oled_draw_pixel(x + col, y + row);
+            }
+        }
+    }
+}
 #endif
