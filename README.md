@@ -39,6 +39,10 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 ### 1:1 Pixel Representation achieved using a 1024-byte buffer [Final Beta]
 <img width="3072" height="3072" alt="IMG_20261103_192202006_HDR" src="https://github.com/user-attachments/assets/6170b1bc-dd5d-44b3-99db-df62017fa892" />
 
+### Main-screen design layout using Pixilart 128x64 [Alpha]
+<img width="1919" height="1079" alt="Screenshot 2026-11-04 192518" src="https://github.com/user-attachments/assets/aa58658a-4a1d-4623-a15f-11a7f7b2fac7" />
+
+
 ### Detailed Serial Port Monitoring [Fixed Brownout Issue]
 <img width="1919" height="1079" alt="Screenshot 2026-11-01 143836" src="https://github.com/user-attachments/assets/3093cd82-b947-4402-a433-2caf3119a111" />
 
