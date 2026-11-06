@@ -4,3 +4,4 @@ build/
 *.bin
 *.map
 .vscode/
+u8g2/
