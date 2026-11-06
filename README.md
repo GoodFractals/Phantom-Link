@@ -1,5 +1,6 @@
 # Phantom Link: Encrypted Wireless Covert Channel [Active - WIP]
 
+Have you ever wanted to use Wi-Fi in the middle of the desert?
 Phantom Link is a standalone, encrypted, bidirectional wireless communication device built from scratch using two Raspberry Pi Pico 2 W microcontrollers. 
 
 This project demonstrates low-level hardware hacking, bypassing standard Wi-Fi networking stacks to establish a custom, encrypted UDP link. Messages are encrypted, transmitted over raw 2.4GHz RF, decrypted, and displayed on standalone OLED hardware.
