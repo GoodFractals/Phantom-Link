@@ -30,8 +30,9 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 ### The Hardware Setup
 <img width="3072" height="3072" alt="IMG_20261101_175008064_HDR" src="https://github.com/user-attachments/assets/de9636a9-d38e-4655-bdd7-4e771551e8ba" />
 
-### [Pre-Alpha] UI/UX With PSP-1000 Joystick Fully Functional
-<img width="3072" height="3072" alt="IMG_20261101_201237897_HDR" src="https://github.com/user-attachments/assets/9666b635-3c88-4703-a764-bbfde1c6964c" />
+### [Late-Stage Beta] UI/UX With PSP-1000 Joystick Fully Functional
+<img width="3072" height="3072" alt="IMG_20261105_185402563_HDR" src="https://github.com/user-attachments/assets/0ffb4a86-e557-475d-83a1-b12c6efcf3fb" />
+
 
 ### 2.5 second startup screen mockup 128x64 [beta] using Lopaka
 <img width="1919" height="1079" alt="Screenshot 2026-11-03 105327" src="https://github.com/user-attachments/assets/71efdb70-433e-48aa-a295-f887d4b67758" />
