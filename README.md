@@ -23,7 +23,7 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 *   **SDK:** Raspberry Pi Pico SDK
 *   **Networking:** lwIP (Lightweight IP) stack, UDP
 *   **Build System:** CMake (compiled entirely in WSL Ubuntu)
-*   **Hardware:** 2x Pico 2 W, 2x Inland 1.3" SH1106 SPI OLEDs, PSP 1000 analog joystick, breadboards.
+*   **Hardware:** 2x Pico 2 W, 2x Inland 1.3" SH1106 SPI OLEDs, 2x Sony PSP 1000 analog joysticks, breadboards, buttons.
 
 ## Gallery
 
