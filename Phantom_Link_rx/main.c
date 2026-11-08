@@ -4,7 +4,8 @@
 #include "hardware/spi.h"
 #include "hardware/adc.h"
 #include "oled.h"
-#include "alpha_ui.h" 
+#include "alpha_ui.h"   // Your Alpha page array (alpha_image)
+#include "numeric_ui.h" // Your Numeric page array (numeric_image)
 
 // --- The Bounding Box Structure ---
 typedef struct {
@@ -14,79 +15,117 @@ typedef struct {
     int y2;
 } BoxRect;
 
-// --- THE MASTER GRID ---
-BoxRect keypad_boxes[4][3] = {
-    // Row 0
+// ==========================================
+// FILL IN THESE COORDINATES FROM PIXILART
+// Format: {x1, y1, x2, y2}
+// ==========================================
+
+// --- ALPHA PAGE GRID (12 Buttons) ---
+BoxRect alpha_boxes[4][3] = {
+    // Row 0: SEND, ABC, DEF
     { 
-        {8, 21, 27, 31}, // SOS (Your perfect coordinates!)
-        {49, 21, 72, 31},    // ABC (Empty)
-        {93, 21, 116, 31}     // DEF (Empty)
+        {0, 0, 0, 0}, // SEND
+        {0, 0, 0, 0}, // ABC
+        {0, 0, 0, 0}  // DEF
     },
-    // Row 1
+    // Row 1: GHI, JKL, MNO
     { 
-        {7, 32, 29, 42},    // GHI
-        {49, 32, 72, 42},    // JKL
-        {93, 32, 117, 42}     // MNO
+        {0, 0, 0, 0}, // GHI
+        {0, 0, 0, 0}, // JKL
+        {0, 0, 0, 0}  // MNO
     },
-    // Row 2
+    // Row 2: PQR, STU, WXYZ
     { 
-        {7, 43, 30, 53},    // PQR
-        {49, 43, 73, 53},    // STU
-        {88, 43, 120, 53}     // WXYZ
+        {0, 0, 0, 0}, // PQR
+        {0, 0, 0, 0}, // STU
+        {0, 0, 0, 0}  // WXYZ
     },
-    // Row 3
+    // Row 3: 123+, SPACE, .,?!
     { 
-        {7, 54, 30, 64},    // 123
-        {52, 55, 70, 64},    // SPC
-        {84,53,124,64}     // .,?!
+        {0, 0, 0, 0}, // 123+
+        {0, 0, 0, 0}, // SPACE
+        {0, 0, 0, 0}  // .,?!
     }
 };
 
-// --- Grid Variables ---
+// --- NUMERIC PAGE GRID (6 Active Buttons) ---
+// The {0,0,0,0} spots are the empty areas the joystick will skip.
+BoxRect numeric_boxes[4][3] = {
+    // Row 0: 123, SOS, (Empty)
+    { 
+        {0, 0, 0, 0}, // 123
+        {0, 0, 0, 0}, // SOS
+        {0, 0, 0, 0}  // Empty (Status bar area)
+    },
+    // Row 1: 456, SPC, (Empty)
+    { 
+        {0, 0, 0, 0}, // 456
+        {0, 0, 0, 0}, // SPC
+        {0, 0, 0, 0}  // Empty (Status bar area)
+    },
+    // Row 2: 789, (Empty), (Empty)
+    { 
+        {0, 0, 0, 0}, // 789
+        {0, 0, 0, 0}, // Empty
+        {0, 0, 0, 0}  // Empty
+    },
+    // Row 3: 0=+-, (Empty), (Empty)
+    { 
+        {0, 0, 0, 0}, // 0=+-
+        {0, 0, 0, 0}, // Empty
+        {0, 0, 0, 0}  // Empty
+    }
+};
+
+// --- UI State Variables ---
+int current_page = 0; // 0 = Alpha, 1 = Numeric
 int cursor_col = 0; 
 int cursor_row = 0; 
-bool ui_active = false; // NEW: Keeps the screen blank until you touch the stick
+bool ui_active = false; 
 
-// --- NEW: The Organic Movement Logic ---
+// --- Helper to get the current box based on the page ---
+BoxRect get_current_box() {
+    if (current_page == 0) return alpha_boxes[cursor_row][cursor_col];
+    else return numeric_boxes[cursor_row][cursor_col];
+}
+
+// --- The Spatial Navigation Logic ---
 void move_cursor(int d_row, int d_col) {
     int next_row = cursor_row + d_row;
     int next_col = cursor_col + d_col;
 
-    // 1. Check screen boundaries
+    // Screen boundaries
     if (next_row < 0 || next_row > 3 || next_col < 0 || next_col > 2) return;
 
-    // 2. Check if the box actually exists (is not 0,0,0,0)
-    BoxRect next_box = keypad_boxes[next_row][next_col];
+    // Check if the box actually exists (is not 0,0,0,0)
+    BoxRect next_box;
+    if (current_page == 0) next_box = alpha_boxes[next_row][next_col];
+    else next_box = numeric_boxes[next_row][next_col];
+
     if (next_box.x2 > next_box.x1 && next_box.y2 > next_box.y1) {
-        // It exists! Move the cursor.
         cursor_row = next_row;
         cursor_col = next_col;
-        ui_active = true; // Wake up the UI
+        ui_active = true; 
     }
 }
 
 void drawMainUI(void) {
-    // 1. Wipe screen with the background image
-    memcpy(oled_buffer, alpha_image, 1024);
+    // 1. Load the correct background
+    if (current_page == 0) memcpy(oled_buffer, alpha_image, 1024);
+    else memcpy(oled_buffer, numeric_image, 1024);
     
-    // 2. Get the current box
-    BoxRect b = keypad_boxes[cursor_row][cursor_col];
-    
-    // 3. THE GLOBAL OFFSET HACK
-    // Shift the entire box 1 pixel left and 1 pixel up
-    int offset_x = -1;
-    int offset_y = -1;
-    
-    // 4. Only draw if the coordinates have been filled in
-    if (b.x2 > b.x1 && b.y2 > b.y1) {
-        int width = b.x2 - b.x1;
-        int height = b.y2 - b.y1;
-        
-        // Apply the offset when drawing
-        oled_draw_box(b.x1 + offset_x, b.y1 + offset_y, width, height);
+    // 2. Draw the box if active
+    if (ui_active) {
+        BoxRect b = get_current_box();
+        if (b.x2 > b.x1 && b.y2 > b.y1) {
+            int width = b.x2 - b.x1;
+            int height = b.y2 - b.y1;
+            // Draw box (we use -1 offset if needed from previous testing)
+            oled_draw_box(b.x1, b.y1, width, height);
+        }
     }
     
-    // 5. Send to screen
+    // 3. Send to screen
     oled_show();
 }
 
@@ -99,17 +138,17 @@ int main() {
     adc_gpio_init(27); // Y
 
     while (true) {
-        // --- 1. JOYSTICK MOVEMENT ---
         adc_select_input(0); uint16_t x = adc_read();
         adc_select_input(1); uint16_t y = adc_read();
 
-        // Use the new organic movement function
+        // Joystick Movement
         if (x > 3000) { move_cursor(0, -1); sleep_ms(200); } // Left
         if (x < 1000) { move_cursor(0, 1); sleep_ms(200); }  // Right
         if (y > 3000) { move_cursor(1, 0); sleep_ms(200); }  // Down
         if (y < 1000) { move_cursor(-1, 0); sleep_ms(200); } // Up
 
-        // --- 2. DRAW SCREEN ---
+        // TODO: Add Button Logic Here (Page switching, typing, backspace)
+
         drawMainUI();
         sleep_ms(50);
     }
