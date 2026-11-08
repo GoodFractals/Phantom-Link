@@ -1,5 +1,6 @@
 # Phantom Link: Encrypted Wireless Covert Channel [Active - WIP]
 
+Have you ever wanted to use Wi-Fi in the middle of the desert?
 Phantom Link is a standalone, encrypted, bidirectional wireless communication device built from scratch using two Raspberry Pi Pico 2 W microcontrollers. 
 
 This project demonstrates low-level hardware hacking, bypassing standard Wi-Fi networking stacks to establish a custom, encrypted UDP link. Messages are encrypted, transmitted over raw 2.4GHz RF, decrypted, and displayed on standalone OLED hardware.
@@ -23,14 +24,14 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 *   **SDK:** Raspberry Pi Pico SDK
 *   **Networking:** lwIP (Lightweight IP) stack, UDP
 *   **Build System:** CMake (compiled entirely in WSL Ubuntu)
-*   **Hardware:** 2x Pico 2 W, 2x Inland 1.3" SH1106 SPI OLEDs, PSP 1000 analog joystick, breadboards.
+*   **Hardware:** 2x Pico 2 W, 2x Inland 1.3" SH1106 SPI OLEDs, 2x Sony PSP 1000 analog joysticks, breadboards, buttons.
 
 ## Gallery
 
 ### The Hardware Setup
 <img width="3072" height="3072" alt="IMG_20261101_175008064_HDR" src="https://github.com/user-attachments/assets/de9636a9-d38e-4655-bdd7-4e771551e8ba" />
 
-### [Late-Stage Beta] UI/UX With PSP-1000 Joystick Fully Functional
+### [Late-Stage Beta] UI/UX With Sony PSP-1000 Joystick Fully Functional
 <img width="3072" height="3072" alt="IMG_20261105_185402563_HDR" src="https://github.com/user-attachments/assets/0ffb4a86-e557-475d-83a1-b12c6efcf3fb" />
 
 
