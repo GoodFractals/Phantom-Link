@@ -28,7 +28,7 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 
 ## Gallery
 
-### [Proof-of-Concept] First Success Sending and Receiving an encrypted packet
+### [Proof-of-Concept] First Success Sending and Receiving an Encrypted Payload
 <img width="3072" height="3072" alt="IMG_20261101_175008064_HDR" src="https://github.com/user-attachments/assets/de9636a9-d38e-4655-bdd7-4e771551e8ba" />
 
 ### [Final Beta] UI/UX With Sony PSP-1000 Joystick Fully Functional
