@@ -31,7 +31,7 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 ### The Hardware Setup
 <img width="3072" height="3072" alt="IMG_20261101_175008064_HDR" src="https://github.com/user-attachments/assets/de9636a9-d38e-4655-bdd7-4e771551e8ba" />
 
-### [Late-Stage Beta] UI/UX With Sony PSP-1000 Joystick Fully Functional
+### [Final Beta] UI/UX With Sony PSP-1000 Joystick Fully Functional
 <img width="3072" height="3072" alt="IMG_20261110_190128444_HDR" src="https://github.com/user-attachments/assets/423bf832-ab03-407f-b7ee-3536018320ac" />
 
 
