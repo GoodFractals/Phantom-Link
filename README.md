@@ -55,6 +55,7 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 - [x] Establish encrypted UDP link over private AP.
 - [x] Develop custom SPI OLED driver and PNG-to-C pipeline.
 - [x] Implement T9 text-input UI (Alpha/Numeric states) with joystick navigation.
+- [ ] Implement button functionality and menu wrap-around logic
 - [ ] Upgrade payload encryption to Speck Cipher.
 - [ ] Implement MAC-layer steganography (StegoFrameOrder) for stealth signaling.
 - [ ] [Undecided/Optional] Dig up antenna trace to solder intel 2.4 ghz antenna on each Pico for signal amplification.
