@@ -61,4 +61,5 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 - [ ] Implement button functionality and menu wrap-around logic
 - [ ] Upgrade payload encryption to Speck Cipher.
 - [ ] Implement MAC-layer steganography (StegoFrameOrder) for stealth signaling.
+- [ ] Package into enclosure and untether using 2000mah battery bank.
 - [ ] [Undecided/Optional] Dig up antenna trace to solder intel 2.4 ghz antenna on each Pico for signal amplification.
