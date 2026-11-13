@@ -44,7 +44,7 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 <img width="3072" height="3072" alt="IMG_20261103_192202006_HDR" src="https://github.com/user-attachments/assets/6170b1bc-dd5d-44b3-99db-df62017fa892" />
 
 
-### Custom variable-width font mapping for embedded OLEDs. Moving beyond standard ASCII blocks for a 1:1 pixel-perfect UI.
+### Custom variable-width font mapping for embedded OLEDs. Moving beyond standard ASCII blocks for a 1:1 pixel-perfect UI 512x8
 <img width="1919" height="1079" alt="Screenshot 2026-11-13 152658" src="https://github.com/user-attachments/assets/dbb45c80-06e3-4a0c-96e5-57464f9d23d5" />
 
 
