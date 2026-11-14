@@ -45,7 +45,7 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 
 
 ### Custom variable-width font mapping for embedded OLEDs. Moving beyond standard ASCII blocks for a 1:1 pixel-perfect UI 512x8
-<img width="1919" height="1079" alt="Screenshot 2026-11-13 152658" src="https://github.com/user-attachments/assets/dbb45c80-06e3-4a0c-96e5-57464f9d23d5" />
+<img <img width="1919" height="1079" alt="Screenshot 2026-11-13 183953" src="https://github.com/user-attachments/assets/e14f2639-0afc-4156-8ec6-10a791d84336" />
 
 
 ### Detailed Serial Port Monitoring [Fixed Brownout Issue]
