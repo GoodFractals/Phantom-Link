@@ -1,6 +1,7 @@
 #ifndef OLED_H
 #define OLED_H
 
+#include "font_ui.h"
 #include <stdio.h>
 #include <string.h>
 #include "pico/stdlib.h"
@@ -88,6 +89,50 @@ void oled_draw_char(int x, int y, char c) {
                 oled_draw_pixel(x + i, y + j);
             }
         }
+    }
+}
+
+void oled_draw_custom_string(int x, int y, char *text) {
+    int start_page = y / 8;
+    int cursor_x = x;
+
+    while (*text) {
+        char c = *text++;
+        
+        // Map character to index (A-Z, 0-9, Space, ., ?, !)
+        int index = -1;
+        if (c >= 'A' && c <= 'Z') index = c - 'A';
+        else if (c >= '0' && c <= '9') index = (c - '0') + 26;
+        else if (c == '=') index = 36;
+        else if (c == '+') index = 37;
+        else if (c == '-') index = 38;
+        else if (c == '.') index = 39;
+        else if (c == ',') index = 40;
+        else if (c == '?') index = 41;
+        else if (c == '!') index = 42;
+        else if (c == '(') index = 43;
+        else if (c == ')') index = 44;
+        else if (c == '[') index = 45;
+        else if (c == ']') index = 46;
+        else if (c == '"') index = 47;
+
+        if (index < 0 || index >= font_char_count) {
+            cursor_x += 5; // Default space width for unknown chars
+            continue;
+        }
+
+        int char_width = font_widths[index];
+        int char_offset = font_offsets[index];
+
+        for (int col = 0; col < char_width; col++) {
+            uint8_t col_data = font_image[char_offset + col];
+            int screen_x = cursor_x + col;
+            
+            if (screen_x >= 0 && screen_x < 128 && start_page >= 0 && start_page < 8) {
+                oled_buffer[start_page * 128 + screen_x] = col_data; 
+            }
+        }
+        cursor_x += char_width + 1; // +1 for spacing between letters
     }
 }
 
