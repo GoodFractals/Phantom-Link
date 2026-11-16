@@ -4,75 +4,128 @@
 #include "hardware/spi.h"
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
-#include "oled.h"
-#include "alpha_ui.h"   
-#include "numeric_ui.h"
 #include "pico/time.h"
 #include "pico/cyw43_arch.h"
 #include "lwip/udp.h"
 #include "lwip/pbuf.h"
+#include "oled.h"
+#include "alpha_ui.h"
+#include "numeric_ui.h"
 
-// Button Definitions
+// --- NETWORK ROLE ---
+// SET TO 1 FOR THE JANK BOX (AP)
+// SET TO 0 FOR THE RX PICO (STA)
+#define IS_AP 0 
+
 #define BTN_SELECT 14
 #define BTN_DELETE 15
 
-// --- Phantom Link Packet Structure ---
+// --- PACKET STRUCTURE ---
 typedef struct {
-    uint16_t sync_word;  // 0xAA55
+    uint16_t sync_word;
     uint8_t length;
     char payload[64];
     uint8_t crc;
 } PhantomPacket;
 
-// Simple checksum for CRC error checking
 uint8_t calculate_crc(const char* data, size_t len) {
     uint8_t crc = 0;
-    for (size_t i = 0; i < len; i++) {
-        crc ^= data[i];
-    }
+    for (size_t i = 0; i < len; i++) crc ^= data[i];
     return crc;
 }
 
-// --- The Bounding Box Structure ---
-typedef struct {
-    int x1;
-    int y1;
-    int x2;
-    int y2;
-} BoxRect;
+// --- SFO LOGIC ---
+const char* dummy_packets[] = {"PING", "ACK", "SYNC", "PONG", "DATA", "READY", "END"};
+struct udp_pcb *upcb;
 
-// --- ALPHA PAGE GRID (12 Buttons) ---
+// --- UI VARIABLES ---
+typedef struct { int x1, y1, x2, y2; } BoxRect;
+
 BoxRect alpha_boxes[4][3] = {
-    { {7, 21, 31, 31}, {49, 21, 72, 31}, {93, 21, 116, 31} }, // Row 0 (SEND, ABC, DEF)
-    { {7, 32, 29, 42}, {49, 32, 72, 42}, {93, 32, 117, 42} }, // Row 1 (GHI, JKL, MNO)
-    { {7, 43, 30, 53}, {49, 43, 73, 53}, {88, 43, 120, 53} }, // Row 2 (PQR, STU, WXYZ)
-    { {7, 54, 30, 64}, {52, 55, 70, 64}, {84, 53, 124, 64} }  // Row 3 (123, SPC, .,?!)
+    { {7, 21, 31, 31}, {49, 21, 72, 31}, {93, 21, 116, 31} },
+    { {7, 32, 29, 42}, {49, 32, 72, 42}, {93, 32, 117, 42} },
+    { {7, 43, 30, 53}, {49, 43, 73, 53}, {88, 43, 120, 53} },
+    { {7, 54, 30, 64}, {52, 55, 70, 64}, {84, 53, 124, 64} }
 };
-
-// --- NUMERIC PAGE GRID (6 Active Buttons) ---
 BoxRect numeric_boxes[4][3] = {
-    { {7, 20, 40, 30}, {49, 20, 80, 30}, {0, 0, 0, 0} }, // Row 0 (123, SOS, Empty)
-    { {7, 31, 40, 41}, {49, 31, 80, 41}, {0, 0, 0, 0} }, // Row 1 (456, SPC, Empty)
-    { {7, 42, 40, 52}, {0, 0, 0, 0}, {0, 0, 0, 0} },     // Row 2 (789, Empty, Empty)
-    { {7, 53, 40, 63}, {0, 0, 0, 0}, {0, 0, 0, 0} }      // Row 3 (0=+-, Empty, Empty)
+    { {7, 20, 40, 30}, {49, 20, 80, 30}, {0, 0, 0, 0} },
+    { {7, 31, 40, 41}, {49, 31, 80, 41}, {0, 0, 0, 0} },
+    { {7, 42, 40, 52}, {0, 0, 0, 0}, {0, 0, 0, 0} },
+    { {7, 53, 40, 63}, {0, 0, 0, 0}, {0, 0, 0, 0} }
 };
 
-// --- UI State Variables ---
-int current_page = 0; // 0 = Alpha, 1 = Numeric
+int current_page = 0; 
 int cursor_col = 0; 
 int cursor_row = 0; 
 bool ui_active = true; 
-
-// --- Text Buffer Variables ---
 char current_message[64] = ""; 
 int msg_length = 0;
 
+const char* tap_groups[] = {
+    "ABC", "DEF", "GHI", "JKL", "MNO", "PQR", "STU", "WXYZ",
+    ".,?!", "123", "456", "789", "0=+\"", "()[]"
+};
+int active_group = -1;
+int tap_count = 0;
+uint32_t last_tap_time = 0;
+char rx_buffer[64] = "";
+int rx_index = 0;
+
+// --- UDP FUNCTIONS ---
+void udp_send_packet(const char *msg) {
+    struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, strlen(msg), PBUF_RAM);
+    if (!p) return;
+    memcpy(p->payload, msg, strlen(msg));
+    
+    ip_addr_t dest_ip;
+    IP4_ADDR(&dest_ip, 192, 168, 4, 1); // Broadcast to both Picos
+    
+    udp_sendto(upcb, p, &dest_ip, 4444);
+    pbuf_free(p);
+}
+
+static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
+    if (p != NULL) {
+        char *payload = (char *)p->payload;
+        int packet_id = -1;
+        
+        for (int i = 0; i < 7; i++) {
+            if (strncmp(payload, dummy_packets[i], p->len) == 0) {
+                packet_id = i;
+                break;
+            }
+        }
+              static int high_val = -1;
+        
+        if (packet_id >= 0 && packet_id < 6) {
+            if (high_val == -1) {
+                high_val = packet_id; // Store high digit
+            } else {
+                int low_val = packet_id; // Got low digit
+                char decoded_char = 'A' + (high_val * 6 + low_val);
+                if (rx_index < 63) {
+                    rx_buffer[rx_index++] = decoded_char;
+                    rx_buffer[rx_index] = '\0';
+                }
+                high_val = -1; // Reset for next character
+            }
+        } else if (packet_id == 6) { // END packet
+            high_val = -1; // Reset state
+            strcpy(current_message, rx_buffer);
+            msg_length = rx_index;
+            printf("\n!!! SOS SIGNAL RECEIVED !!!\n");
+            rx_index = 0;
+            rx_buffer[0] = '\0';
+        }
+        pbuf_free(p);
+    }
+}
+
+// --- UI FUNCTIONS ---
 void drawMainUI(void) {
-    // 1. Load the correct background
     if (current_page == 0) memcpy(oled_buffer, alpha_image, 1024);
     else memcpy(oled_buffer, numeric_image, 1024);
     
-    // 2. Draw the selection box
     if (ui_active) {
         BoxRect b = (current_page == 0) ? alpha_boxes[cursor_row][cursor_col] : numeric_boxes[cursor_row][cursor_col];
         if (b.x2 > b.x1 && b.y2 > b.y1) {
@@ -80,177 +133,91 @@ void drawMainUI(void) {
         }
     }
 
-    // 3. Draw the typed message on the screen
-    // Adjust the X, Y coordinates if the text overlaps the "CURR:" label
-        if (msg_length > 0) {
-        oled_draw_custom_string(24, 12, current_message); 
+    if (msg_length > 0) {
+        oled_draw_custom_string(0, 30, current_message); // Top Left UI
     }
-    
     oled_show();
 }
 
 void move_cursor(int d_row, int d_col) {
-    // --- 1. The "Left Flick Back" Logic for Page 2 ---
-    // If we are on the numeric page and the user flicks left, take them back to Alpha
-    if (current_page == 1 && d_col == -1) {
-        current_page = 0;
-        cursor_row = 0; // Reset to top left of the Alpha page
-        cursor_col = 0;
-        ui_active = true;
-        return;
-    }
-
-    int next_row = cursor_row + d_row;
-    int next_col = cursor_col + d_col;
-
-    // --- 2. The Wrap-Around Logic ---
-    // Horizontal Wrap (Left/Right)
-    if (next_col < 0) next_col = 2;
-    if (next_col > 2) next_col = 0;
-
-    // Vertical Wrap (Up/Down)
-    if (next_row < 0) next_row = 3;
-    if (next_row > 3) next_row = 0;
-
-    // --- 3. Check if the new box is valid ---
+    if (current_page == 1 && d_col == -1) { current_page = 0; cursor_row = 0; cursor_col = 0; return; }
+    int next_row = (cursor_row + d_row + 4) % 4;
+    int next_col = (cursor_col + d_col + 3) % 3;
+    
     BoxRect next_box = (current_page == 0) ? alpha_boxes[next_row][next_col] : numeric_boxes[next_row][next_col];
-
     if (next_box.x2 > next_box.x1 && next_box.y2 > next_box.y1) {
-        // Box is valid, move there
         cursor_row = next_row;
         cursor_col = next_col;
-        ui_active = true;
-    } else {
-        // Box is empty (happens a lot on the numeric page). 
-        // Let's skip over the empty boxes in the same direction.
-        int test_row = next_row;
-        int test_col = next_col;
-        int steps = 0;
-
-        while (steps < 3) { // Max 3 columns to check
-            if (d_col != 0) { // Moving horizontally
-                test_col += d_col;
-                if (test_col < 0) test_col = 2;
-                if (test_col > 2) test_col = 0;
-            } else if (d_row != 0) { // Moving vertically
-                test_row += d_row;
-                if (test_row < 0) test_row = 3;
-                if (test_row > 3) test_row = 0;
-            }
-
-            // Check if this skipped box is valid
-            BoxRect test_box = (current_page == 0) ? alpha_boxes[test_row][test_col] : numeric_boxes[test_row][test_col];
-            
-            if (test_box.x2 > test_box.x1 && test_box.y2 > test_box.y1) {
-                cursor_row = test_row;
-                cursor_col = test_col;
-                ui_active = true;
-                return;
-            }
-            steps++;
-        }
     }
 }
 
-// --- Multi-Tap State Variables ---
-const char* tap_groups[] = {
-    "ABC", "DEF", "GHI", "JKL", "MNO", "PQR", "STU", "WXYZ", // Alpha page (0-7)
-    ".,?!", // Punctuation (8)
-    "123", "456", "789", "0=+\"" // Numeric page (9-12) - Note the escaped quote!
-};
-
-int active_group = -1;
-int tap_count = 0;
-uint32_t last_tap_time = 0;
-
 void handle_select_button() {
     uint32_t now = time_us_32();
+    if (now - last_tap_time > 800000) { tap_count = 0; active_group = -1; }
 
-    // Reset tap count if it's been more than 800ms since the last press
-    if (now - last_tap_time > 800000) {
-        tap_count = 0;
-        active_group = -1;
-    }
-
-    // --- 1. Handle Utility Buttons First ---
     if (current_page == 0) {
         if (cursor_row == 0 && cursor_col == 0) { // SEND
-            // 1. Build the packet
-            PhantomPacket pkt;
-            pkt.sync_word = 0xAA55;
-            pkt.length = msg_length;
-            strncpy(pkt.payload, current_message, 64);
-            pkt.crc = calculate_crc(pkt.payload, pkt.length);
+            printf("\n--- INITIATING BONNIE & CLYDE PROTOCOL ---\n");
+            for (int i = 0; i < msg_length; i++) {
+                int char_index = current_message[i] - 'A'; 
+                if (char_index < 0 || char_index > 25) char_index = 0; 
+                
+                // Split the character into two base-6 digits
+                int high = char_index / 6;
+                int low = char_index % 6;
+                
+                // Send high packet
+                printf("TX High: %s\n", dummy_packets[high]);
+                udp_send_packet(dummy_packets[high]);
+                sleep_ms(100);
+                
+                // Send low packet
+                printf("TX Low: %s\n", dummy_packets[low]);
+                udp_send_packet(dummy_packets[low]);
+                sleep_ms(100);
+            }
             
-            // 2. Print to serial (for testing)
-            printf("\n--- SENDING PACKET ---\n");
-            printf("Sync: 0x%04X\n", pkt.sync_word);
-            printf("Length: %d\n", pkt.length);
-            printf("Payload: %s\n", pkt.payload);
-            printf("CRC: 0x%02X\n", pkt.crc);
+            // Send the terminator so the RX knows the message is done
+            printf("TX Packet: END\n");
+            udp_send_packet(dummy_packets[6]);
+            sleep_ms(100);
             
-            // 3. Clear the local UI message
-            msg_length = 0;
+            // Clear the local UI message
+            msg_length = 0; 
             current_message[0] = '\0';
             return;
-        }
-        if (cursor_row == 3 && cursor_col == 0) { // SWITCH TO 123
-            current_page = 1; cursor_row = 0; cursor_col = 0; active_group = -1; return;
-        }
-        if (cursor_row == 3 && cursor_col == 1) { // SPACE
-            if (msg_length < 63) { current_message[msg_length++] = ' '; current_message[msg_length] = '\0'; }
-            active_group = -1; return;
-        }
+        } // <--- THIS CLOSES THE SEND BLOCK
+        
+        if (cursor_row == 3 && cursor_col == 0) { current_page = 1; cursor_row = 0; cursor_col = 0; return; }
+        if (cursor_row == 3 && cursor_col == 1) { if (msg_length < 63) { current_message[msg_length++] = ' '; current_message[msg_length] = '\0'; } return; }
     } else {
-        if (cursor_row == 0 && cursor_col == 1) { // SOS (Switch back to ALPHA)
-            current_page = 0; cursor_row = 0; cursor_col = 0; active_group = -1; return;
-        }
-        if (cursor_row == 1 && cursor_col == 1) { // SPACE on numeric page
-            if (msg_length < 63) { current_message[msg_length++] = ' '; current_message[msg_length] = '\0'; }
-            active_group = -1; return;
-        }
+        if (cursor_row == 0 && cursor_col == 1) { current_page = 0; cursor_row = 0; cursor_col = 0; return; }
+        if (cursor_row == 1 && cursor_col == 1) { if (msg_length < 63) { current_message[msg_length++] = ' '; current_message[msg_length] = '\0'; } return; }
     }
 
-    // --- 2. Map Grid Position to Tap Group Index ---
     int group_index = -1;
     if (current_page == 0) {
-        if (cursor_row == 0 && cursor_col == 1) group_index = 0; // ABC
-        if (cursor_row == 0 && cursor_col == 2) group_index = 1; // DEF
-        if (cursor_row == 1 && cursor_col == 0) group_index = 2; // GHI
-        if (cursor_row == 1 && cursor_col == 1) group_index = 3; // JKL
-        if (cursor_row == 1 && cursor_col == 2) group_index = 4; // MNO
-        if (cursor_row == 2 && cursor_col == 0) group_index = 5; // PQR
-        if (cursor_row == 2 && cursor_col == 1) group_index = 6; // STU
-        if (cursor_row == 2 && cursor_col == 2) group_index = 7; // WXYZ
-        if (cursor_row == 3 && cursor_col == 2) group_index = 8; // .,?!
+        if (cursor_row == 0 && cursor_col == 1) group_index = 0; if (cursor_row == 0 && cursor_col == 2) group_index = 1;
+        if (cursor_row == 1 && cursor_col == 0) group_index = 2; if (cursor_row == 1 && cursor_col == 1) group_index = 3;
+        if (cursor_row == 1 && cursor_col == 2) group_index = 4; if (cursor_row == 2 && cursor_col == 0) group_index = 5;
+        if (cursor_row == 2 && cursor_col == 1) group_index = 6; if (cursor_row == 2 && cursor_col == 2) group_index = 7;
+        if (cursor_row == 3 && cursor_col == 2) group_index = 8;
     } else {
-        if (cursor_row == 0 && cursor_col == 0) group_index = 9;  // 123
-        if (cursor_row == 1 && cursor_col == 0) group_index = 10; // 456
-        if (cursor_row == 2 && cursor_col == 0) group_index = 11; // 789
-        if (cursor_row == 3 && cursor_col == 0) group_index = 12; // 0=+"
-        if (cursor_row == 1 && cursor_col == 2) group_index = 13; // ()[]
+        if (cursor_row == 0 && cursor_col == 0) group_index = 9; if (cursor_row == 1 && cursor_col == 0) group_index = 10;
+        if (cursor_row == 2 && cursor_col == 0) group_index = 11; if (cursor_row == 3 && cursor_col == 0) group_index = 12;
+        if (cursor_row == 1 && cursor_col == 2) group_index = 13;
     }
 
-    // --- 3. Process Multi-Tap ---
     if (group_index != -1) {
-        if (group_index != active_group) {
-            tap_count = 0; 
-            active_group = group_index;
-        }
-        
+        if (group_index != active_group) { tap_count = 0; active_group = group_index; }
         tap_count++;
         const char* group_str = tap_groups[group_index];
         int group_len = strlen(group_str);
-        
         char selected_char = group_str[(tap_count - 1) % group_len];
         
         if (msg_length < 63) {
-            if (tap_count > 1 && msg_length > 0) {
-                current_message[msg_length - 1] = selected_char;
-            } else {
-                current_message[msg_length] = selected_char;
-                msg_length++;
-            }
+            if (tap_count > 1 && msg_length > 0) { current_message[msg_length - 1] = selected_char; } 
+            else { current_message[msg_length] = selected_char; msg_length++; }
             current_message[msg_length] = '\0';
         }
         last_tap_time = now;
@@ -258,32 +225,82 @@ void handle_select_button() {
 }
 
 void handle_delete_button() {
-    if (msg_length > 0) {
-        msg_length--;
-        current_message[msg_length] = '\0'; // Null terminate
-    }
+    if (msg_length > 0) { msg_length--; current_message[msg_length] = '\0'; }
 }
 
 int main() {
     stdio_init_all();
+    sleep_ms(2000); // Give Windows 2 seconds to open the COM port
 
-        // --- AP MODE (Phantom Link creates its own network) ---
-    if (cyw43_arch_init()) {
-        printf("Wi-Fi init failed\n");
-        return -1;
-    }
+    // 1. Initialize the screen
+    oled_init();
+    oled_clear();
+    oled_show();
+    sleep_ms(500);
+
+    printf("\n\n--- BOOTING PHANTOM LINK ---\n");
     
+    // 2. Draw the UI FIRST so we have visual feedback
+    drawMainUI();
+    oled_show();
+
+    // 3. Initialize Wi-Fi (ONCE)
+    printf("--- REACHED WIFI INIT ---\n");
+    stdio_flush();
+    
+    if (cyw43_arch_init_with_country(CYW43_COUNTRY_USA)) { 
+        printf("Wi-Fi init failed\n"); 
+        return -1; 
+    }
+    printf("CYW43 Core Initialized.\n");
+    stdio_flush();
+    sleep_ms(1000); // Let the driver breathe
+
+#if IS_AP
     cyw43_arch_enable_ap_mode("Phantom_Link", "12345678", CYW43_AUTH_WPA2_AES_PSK);
     printf("AP Active! IP: 192.168.4.1\n");
-
-    oled_init();
+    stdio_flush();
+#else
+    cyw43_arch_enable_sta_mode();
+    printf("Connecting to Phantom_Link (Async)...\n");
+    stdio_flush();
     
-    // Initialize Joystick
-    adc_init();
-    adc_gpio_init(26); // X
-    adc_gpio_init(27); // Y
+    cyw43_arch_wifi_connect_async("Phantom_Link", "12345678", CYW43_AUTH_WPA2_AES_PSK);
+    
+    int timeout = 30; 
+    while (timeout > 0) {
+        cyw43_arch_poll(); // Keep the Wi-Fi alive
+        
+        if (cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA) == CYW43_LINK_JOIN) {
+            printf("STA Connected! IP: 192.168.4.2\n");
+            stdio_flush();
+            break;
+        }
+        sleep_ms(100);
+        timeout--;
+    }
+    
+    if (timeout == 0) {
+        printf("Failed to connect. Running offline mode.\n");
+        stdio_flush();
+    }
+#endif
 
-    // Initialize Buttons
+     // 4. Initialize UDP
+    printf("Survived WiFi. Before UDP Init...\n");
+    stdio_flush();
+    upcb = udp_new();
+    udp_bind(upcb, IP_ADDR_ANY, 4444);
+    udp_recv(upcb, udp_recv_callback, NULL);
+    printf("UDP Initialized!\n");
+    stdio_flush();
+
+         // --- RE-INITIALIZE ADC & BUTTONS AFTER WIFI ---
+    adc_init();
+    adc_gpio_init(26);
+    adc_gpio_init(27);
+
+    // Re-initialize buttons and force internal pull-ups
     gpio_init(BTN_SELECT);
     gpio_set_dir(BTN_SELECT, GPIO_IN);
     gpio_pull_up(BTN_SELECT);
@@ -292,30 +309,44 @@ int main() {
     gpio_set_dir(BTN_DELETE, GPIO_IN);
     gpio_pull_up(BTN_DELETE);
 
+    // 5. Main Loop
     while (true) {
-        // --- 1. JOYSTICK NAVIGATION ---
+        // printf("Loop Start...\n"); // Commented out so it doesn't spam
+        // stdio_flush();
+        
+        cyw43_arch_poll(); // Keep Wi-Fi alive
+        
+        sleep_ms(10); // CRITICAL: Let the Wi-Fi breathe before reading ADC
+
+        // Joystick Logic (RE-ENABLED)
         adc_select_input(0); uint16_t x = adc_read();
         adc_select_input(1); uint16_t y = adc_read();
+        
+        // Debug print (Uncomment this if the joystick still doesn't move)
+        // printf("X: %d, Y: %d\n", x, y); 
+        // stdio_flush();
 
         if (x > 3000) { move_cursor(0, -1); sleep_ms(200); }
         if (x < 1000) { move_cursor(0, 1); sleep_ms(200); }
         if (y > 3000) { move_cursor(1, 0); sleep_ms(200); }
         if (y < 1000) { move_cursor(-1, 0); sleep_ms(200); }
 
-        // --- 2. BUTTON READS ---
-        if (gpio_get(BTN_SELECT) == 0) {
-            handle_select_button();
-            sleep_ms(50); // Debounce delay
+               // Button Logic with DEBUG PRINTS
+        if (gpio_get(BTN_SELECT) == 0) { 
+            printf("SELECT PRESSED!\n"); 
+            stdio_flush();
+            handle_select_button(); 
+            sleep_ms(200); // Long debounce to prevent double triggers
+        }
+        if (gpio_get(BTN_DELETE) == 0) { 
+            printf("DELETE PRESSED!\n"); 
+            stdio_flush();
+            handle_delete_button(); 
+            sleep_ms(200); 
         }
 
-        if (gpio_get(BTN_DELETE) == 0) {
-            handle_delete_button();
-            sleep_ms(50); // Debounce delay
-        }
-
-        // --- 3. DRAW ---
+        // Draw UI
         drawMainUI();
         sleep_ms(50);
-    }
-    return 0;
-}
+    } // <-- CLOSES WHILE LOOP
+} // <-- CLOSES INT MAIN()
