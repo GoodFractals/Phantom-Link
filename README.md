@@ -58,7 +58,7 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 - [x] Develop custom SPI OLED driver and PNG-to-C pipeline.
 - [x] Implement T9 text-input UI (Alpha/Numeric states) with joystick navigation.
 - [x] Create manual sprites for each typable character and symbol for custom font insertion [single-pass].
-- [ ] Implement button functionality and menu wrap-around logic
+- [x] Implement button functionality and menu wrap-around logic
 - [ ] Upgrade payload encryption to Speck Cipher.
 - [ ] Implement MAC-layer steganography (StegoFrameOrder) for stealth signaling.
 - [ ] Package into enclosure and untether using 2000mah battery bank.
