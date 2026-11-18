@@ -1,6 +1,6 @@
 # Phantom Link: Routerless Wireless Link [Handshake PoC]
 
-Phantom Link is a standalone, bidirectional wireless link built from two Raspberry Pi Pico 2 W boards, SH1106 OLED hardware, and a PSP-1000 analog joystick. The Jank Box 5000 is the full UI client; the Barebones Pico is the AP host with no joystick or buttons attached. One board hosts a private Wi-Fi network; the other joins it. No router, access point, or phone is required.
+Phantom Link is a standalone, bidirectional wireless link built from two Raspberry Pi Pico 2 W boards. Both boards carry the same BOM: an SH1106 OLED, a PSP-1000 analog joystick on GP26/GP27, and SELECT/DELETE buttons on GP14/GP15. One board hosts a private Wi-Fi network; the other joins it. No router, access point, or phone is required.
 
 This is a handshake-first proof of concept. The link is **plaintext** right now: the firmware implements the OLED UI, input, character codec, UDP transport, peer learning, heartbeat, and timeout. Encryption, framing/CRC, authentication, replay protection, and true MAC-layer steganography are **planned but not implemented**. The project is presented as an embedded-systems prototype, not as a finished secure communicator.
 
@@ -16,13 +16,13 @@ This is a handshake-first proof of concept. The link is **plaintext** right now:
 - 1 s heartbeat, 3 s link timeout, `LINK UP` / `LINK LOST` serial logs, and link-state LED.
 - Non-blocking transmit state machine; `cyw43_arch_poll()` runs continuously.
 - Boot splash from `boot_ui.h`, restored UI after boot, and draft/response text on separate rows.
-- Two build targets from one `main.c`: `phantom_link_ap` (`IS_AP=1`) and `phantom_link_sta` (`IS_AP=0`).
-- Host validation: font table, all 49 codec values, a 21-character round-trip, `V` reachability, and the corrected numeric hitboxes pass.
+- Two build targets from one `main.c`: `phantom_link_ap` (`IS_AP=1`) and `phantom_link_sta` (`IS_AP=0`). `IS_AP` selects only the Wi-Fi role; the OLED/input path is unconditional in both.
+- Host validation: font table, all 49 codec values, a 21-character round-trip, `V` reachability, the corrected numeric hitboxes, and the unconditional UI/input path pass.
 
 **Hardware status**
 - Both UF2s build warning-free with Pico SDK 2.3.1 on native Windows.
-- `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (674,304 bytes) were produced and inspected with `picotool`.
-- **No board was connected during the build session.** Boot, Jank Box typing/rendering, handshake, timeout/recovery, and both serial logs still need hardware acceptance testing. The Barebones AP has no joystick/buttons attached and is verified through its USB serial log. See the test matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
+- `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (674,816 bytes) were produced and inspected with `picotool`.
+- **No board was connected during the build session.** Boot, typing/rendering on both boards, handshake, timeout/recovery, and both serial logs still need hardware acceptance testing. Both units must be wired to the same BOM before running the matrix. See the test matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
 
 **Not implemented yet**
 - Encryption (Speck is planned), key exchange, authentication, replay protection.
@@ -36,9 +36,9 @@ The CYW43439/Pico SDK supports AP and STA roles, not ad-hoc/IBSS. Exactly one bo
 
 - **AP/STA** is the radio role.
 - **TX/RX** is what a packet is doing.
-- Both roles compile the same transceiver, UI, input, codec, and parser path. The Jank Box 5000 has the physical joystick/buttons; the Barebones AP has no joystick/buttons attached and is verified over serial. Both roles can send and receive; only the STA currently has the attached input hardware.
+- Both roles compile the same transceiver, UI, input, codec, and parser path. `IS_AP` selects only the Wi-Fi role; both boards can type, send, receive, decode, and render.
 
-One `firmware/main.c` is compiled twice. `phantom_link_ap` hosts the private network; `phantom_link_sta` joins it and sends the first `HELLO`. The STA learns the AP address from `HELLO_ACK`; the AP learns the STA address from the received datagram. There is no forced static IP.
+One `firmware/main.c` is compiled twice. `phantom_link_ap` hosts the private network; `phantom_link_sta` joins it and sends the first `HELLO`. The STA learns the AP address from `HELLO_ACK`; the AP learns the STA address from the received datagram. There is no forced static IP. Wi-Fi bring-up is non-blocking: the UI and input loop start before a STA join completes, and a failed join retries in the main loop.
 
 Network defaults:
 
@@ -122,7 +122,7 @@ Copy-Item "firmware\build\phantom_link_ap.uf2" E:\
 Copy-Item "firmware\build\phantom_link_sta.uf2" E:\
 ```
 
-For the PoC, **Barebones = AP (host)** and **Jank Box 5000 = STA (client)**. The roles are compiled in and are not interchangeable at runtime; flash the matching UF2 to each board.
+For the PoC, **Barebones = AP (host)** and **Jank Box 5000 = STA (client)**. Both boards use the same full UI/input firmware and BOM; only the Wi-Fi role differs, so flash the matching UF2 to each board.
 
 Open one serial monitor per board at 115200 8N1. Expected boot banners:
 
@@ -135,6 +135,7 @@ UDP listening on 4444
 ```text
 --- PHANTOM LINK STA ---
 STA connecting to Phantom_Link...
+STA join continues in the main loop
 STA IP: 192.168.4.x
 TX HELLO
 RX HELLO_ACK
@@ -152,7 +153,7 @@ firmware/            Unified AP/STA firmware and build definition
   numeric_ui.h       1024-byte Numeric page art
   boot_ui.h          1024-byte boot splash art
   CMakeLists.txt     phantom_link_ap + phantom_link_sta targets
-  tests/             Host-side font/codec/UI validation (no SDK needed)
+  tests/             Host-side font/codec/UI/role validation (no SDK needed)
 docs/                Audit, remediation plan, test matrix, AI handoff
 Phantom_Link_rx/     Original RX firmware, kept as rollback reference
 Phantom_Link_tx/     Original TX tree, stale pre-Base-6 fork
@@ -199,6 +200,7 @@ The pre-audit RX tree is retained for rollback. The unified firmware is the acti
 - [x] Implement the Alpha/Numeric text-entry UI with joystick navigation.
 - [x] Create a custom variable-width font and 49-character transport alphabet.
 - [x] Unify both roles into one firmware source with two build targets.
+- [x] Make OLED/input initialization unconditional; `IS_AP` selects only the Wi-Fi role.
 - [x] Add `HELLO`/`HELLO_ACK`, peer learning, heartbeat, timeout, and link-state LED.
 - [x] Add non-blocking transmit and exact-length control-token parsing.
 - [ ] Pass the hardware acceptance matrix: T2–T12 in the audit.

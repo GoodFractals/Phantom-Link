@@ -5,8 +5,10 @@
  *   phantom_link_ap  (IS_AP=1) - hosts the private Wi-Fi network
  *   phantom_link_sta (IS_AP=0) - joins it and initiates HELLO
  *
- * The radio role is independent of TX/RX: both boards type, send, receive,
- * decode, and render. Encryption is deliberately not implemented yet.
+ * IS_AP selects only the Wi-Fi role. The OLED UI, ADC joystick, buttons,
+ * codec, parser, and transmit/receive paths are unconditional and identical
+ * in both builds. Both boards type, send, receive, decode, and render.
+ * Encryption is deliberately not implemented yet.
  */
 
 #include <stdio.h>
@@ -34,11 +36,10 @@
 #define IS_AP 1
 #endif
 
-#if IS_AP
-#define ROLE_NAME "AP"
-#else
-#define ROLE_NAME "STA"
-#endif
+// The compile-time flag selects only the Wi-Fi role. Every other role-dependent
+// decision reads this constant at runtime, so the UI and input path are never
+// compiled out of either target.
+static const bool is_ap = (IS_AP != 0);
 
 #define BTN_SELECT 14
 #define BTN_DELETE 15
@@ -47,7 +48,6 @@
 #define WIFI_PASSWORD "12345678"
 #define UDP_PORT 4444
 
-#define WIFI_TIMEOUT_MS 15000
 #define WIFI_RETRY_MS 5000
 #define HELLO_INTERVAL_MS 1000
 #define HEARTBEAT_MS 1000
@@ -137,6 +137,7 @@ static ip_addr_t peer_ip;
 static u16_t peer_port = UDP_PORT;
 static bool peer_valid = false;
 static bool wifi_ready = false;
+static uint32_t last_wifi_retry_ms = 0;
 static link_state_t link_state = LINK_DOWN;
 static uint32_t last_heard_ms = 0;
 static uint32_t last_hello_ms = 0;
@@ -199,13 +200,13 @@ static bool send_control(const char *token) {
         return send_to(&peer_ip, peer_port, token) == ERR_OK;
     }
 
-#if !IS_AP
-    // The STA knows the AP's default address before HELLO_ACK arrives.
-    return send_to(&ap_addr, UDP_PORT, token) == ERR_OK;
-#else
+    if (!is_ap) {
+        // The STA knows the AP's default address before HELLO_ACK arrives.
+        return send_to(&ap_addr, UDP_PORT, token) == ERR_OK;
+    }
+
     printf("no peer yet; cannot send %s\n", token);
     return false;
-#endif
 }
 
 static void note_peer(const ip_addr_t *addr, u16_t port) {
@@ -684,6 +685,17 @@ static void button_init(Button *b, uint8_t pin) {
     gpio_pull_up(pin);
 }
 
+// Both boards carry the same BOM: OLED, joystick on ADC0/ADC1, and the two
+// active-low buttons. Initialization is unconditional.
+static void input_init(void) {
+    adc_init();
+    adc_gpio_init(26);
+    adc_gpio_init(27);
+
+    button_init(&btn_select, BTN_SELECT);
+    button_init(&btn_delete, BTN_DELETE);
+}
+
 static bool button_pressed(Button *b, uint32_t now) {
     bool raw = (gpio_get(b->pin) == 0);
     if (raw != b->raw) {
@@ -735,16 +747,22 @@ static void input_tick(uint32_t now) {
 
 // --- Network timers -----------------------------------------------------------
 static void wifi_service(uint32_t now) {
-#if IS_AP
-    wifi_ready = true;
-    (void)now;
-#else
-    static uint32_t last_retry_ms = 0;
+    if (is_ap) {
+        wifi_ready = true;
+        return;
+    }
 
     int st = cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA);
     if (st == CYW43_LINK_UP) {
-        wifi_ready = true;
-        last_retry_ms = now;
+        const ip4_addr_t *ip =
+            netif_default ? netif_ip4_addr(netif_default) : NULL;
+        if (ip && !ip4_addr_isany(ip)) {
+            if (!wifi_ready) {
+                printf("STA IP: %s\n", ip4addr_ntoa(ip));
+                wifi_ready = true;
+            }
+            last_wifi_retry_ms = now;
+        }
         return;
     }
 
@@ -754,24 +772,25 @@ static void wifi_service(uint32_t now) {
     }
 
     bool transient = (st == CYW43_LINK_JOIN || st == CYW43_LINK_NOIP);
-    if (!transient && (uint32_t)(now - last_retry_ms) >= WIFI_RETRY_MS) {
-        last_retry_ms = now;
+    if (!transient &&
+        (uint32_t)(now - last_wifi_retry_ms) >= WIFI_RETRY_MS) {
+        last_wifi_retry_ms = now;
         printf("Wi-Fi reconnect attempt\n");
         cyw43_arch_wifi_connect_async(WIFI_SSID, WIFI_PASSWORD,
                                       CYW43_AUTH_WPA2_AES_PSK);
     }
-#endif
 }
 
 static void net_tick(uint32_t now) {
     if (link_state == LINK_DOWN) {
-#if !IS_AP
-        if (wifi_ready && (uint32_t)(now - last_hello_ms) >= HELLO_INTERVAL_MS) {
+        // Only the STA initiates the handshake; the AP waits and learns the
+        // peer from the received HELLO.
+        if (!is_ap && wifi_ready &&
+            (uint32_t)(now - last_hello_ms) >= HELLO_INTERVAL_MS) {
             last_hello_ms = now;
             printf("TX HELLO\n");
             send_control(TOK_HELLO);
         }
-#endif
         return;
     }
 
@@ -798,38 +817,21 @@ static bool wifi_init(void) {
         return false;
     }
 
-#if IS_AP
-    cyw43_arch_enable_ap_mode(WIFI_SSID, WIFI_PASSWORD,
-                              CYW43_AUTH_WPA2_AES_PSK);
-    wifi_ready = true;
-    printf("AP active: 192.168.4.1\n");
-#else
-    cyw43_arch_enable_sta_mode();
-    printf("STA connecting to %s...\n", WIFI_SSID);
+    if (is_ap) {
+        cyw43_arch_enable_ap_mode(WIFI_SSID, WIFI_PASSWORD,
+                                  CYW43_AUTH_WPA2_AES_PSK);
+        wifi_ready = true;
+        printf("AP active: 192.168.4.1\n");
+    } else {
+        cyw43_arch_enable_sta_mode();
+        printf("STA connecting to %s...\n", WIFI_SSID);
 
-    int err = cyw43_arch_wifi_connect_async(WIFI_SSID, WIFI_PASSWORD,
-                                            CYW43_AUTH_WPA2_AES_PSK);
-    if (err) printf("wifi_connect_async failed: %d\n", err);
-
-    uint32_t start = now_ms();
-    bool joined = false;
-    while ((uint32_t)(now_ms() - start) < WIFI_TIMEOUT_MS) {
-        cyw43_arch_poll();
-        if (cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA) ==
-            CYW43_LINK_UP) {
-            const ip4_addr_t *ip =
-                netif_default ? netif_ip4_addr(netif_default) : NULL;
-            if (ip && !ip4_addr_isany(ip)) {
-                printf("STA IP: %s\n", ip4addr_ntoa(ip));
-                joined = true;
-                break;
-            }
-        }
-        sleep_ms(10);
+        last_wifi_retry_ms = now_ms();
+        int err = cyw43_arch_wifi_connect_async(WIFI_SSID, WIFI_PASSWORD,
+                                                CYW43_AUTH_WPA2_AES_PSK);
+        if (err) printf("wifi_connect_async failed: %d\n", err);
+        printf("STA join continues in the main loop\n");
     }
-    wifi_ready = joined;
-    if (!joined) printf("STA not ready; will retry in main loop\n");
-#endif
 
     return true;
 }
@@ -866,28 +868,22 @@ int main(void) {
     stdio_init_all();
     sleep_ms(1500); // give the USB CDC monitor time to attach
 
-    printf("\n--- PHANTOM LINK %s ---\n", ROLE_NAME);
+    printf("\n--- PHANTOM LINK %s ---\n", is_ap ? "AP" : "STA");
 
     oled_init();
     memcpy(oled_buffer, boot_image, 1024);
     oled_show();
     sleep_ms(2500);
 
-    // Draw the real UI before the Wi-Fi join so a slow join does not leave
-    // the boot splash frozen on screen.
+    // Both boards carry the same BOM. Bring up the full local UI and controls
+    // before Wi-Fi so input works even while the STA is still joining.
+    input_init();
     drawMainUI();
 
     IP_ADDR4(&ap_addr, 192, 168, 4, 1);
 
     if (!wifi_init()) halt_error("WIFI FAIL");
     if (!udp_link_init()) halt_error("UDP FAIL");
-
-    adc_init();
-    adc_gpio_init(26);
-    adc_gpio_init(27);
-
-    button_init(&btn_select, BTN_SELECT);
-    button_init(&btn_delete, BTN_DELETE);
 
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
 

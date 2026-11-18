@@ -97,7 +97,7 @@
 </div>
 
 <div class="callout good">
-  <strong>Post-audit implementation (2026-11-18).</strong> A unified <code>firmware/</code> tree now exists: one <code>main.c</code>, one <code>oled.h</code>, and two CMake targets (<code>phantom_link_ap</code> with <code>IS_AP=1</code>, <code>phantom_link_sta</code> with <code>IS_AP=0</code>). Both UF2s build warning-free from that source with Pico SDK 2.3.1 on native Windows (Arm GNU Toolchain 14.2): <code>firmware/build/phantom_link_ap.uf2</code> is 670,720 bytes and <code>firmware/build/phantom_link_sta.uf2</code> is 674,304 bytes. The source implements the 49-code 3-digit Base-6 transport, exact control-token parsing, <code>HELLO</code>/<code>HELLO_ACK</code>/<code>LINK_PING</code>/<code>LINK_PONG</code>, peer learning from <code>addr</code>, a 1 s heartbeat, a 3 s timeout, and a non-blocking TX state machine. Host validation passed for the 48-glyph/180-byte font, all 49 codec values, a 21-character round-trip, <code>V</code> reachability, and the corrected numeric hitboxes. <strong>No board was connected, so the hardware acceptance tests T2-T12 remain pending.</strong> Pixel-level OCR of the baked art also corrected three UI facts below: numeric <code>SOS</code> is on row 2, numeric bottom-right is the <code>LINK</code> indicator (not punctuation), and the alpha <code>WXYZ</code> group gains <code>V</code> as a fifth tap. See the corrected §5.4.
+  <strong>Post-audit implementation (2026-11-18).</strong> A unified <code>firmware/</code> tree now exists: one <code>main.c</code>, one <code>oled.h</code>, and two CMake targets (<code>phantom_link_ap</code> with <code>IS_AP=1</code>, <code>phantom_link_sta</code> with <code>IS_AP=0</code>). Both UF2s build warning-free from that source with Pico SDK 2.3.1 on native Windows (Arm GNU Toolchain 14.2): <code>firmware/build/phantom_link_ap.uf2</code> is 670,720 bytes and <code>firmware/build/phantom_link_sta.uf2</code> is 674,816 bytes. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC joystick, buttons, input polling, codec, parser, and render path are unconditional, and Wi-Fi bring-up is non-blocking. The source implements the 49-code 3-digit Base-6 transport, exact control-token parsing, <code>HELLO</code>/<code>HELLO_ACK</code>/<code>LINK_PING</code>/<code>LINK_PONG</code>, peer learning from <code>addr</code>, a 1 s heartbeat, a 3 s timeout, and a non-blocking TX state machine. Host validation passed for the 48-glyph/180-byte font, all 49 codec values, a 21-character round-trip, <code>V</code> reachability, the corrected numeric hitboxes, and the unconditional input/UI path. <strong>No board was connected, so the hardware acceptance tests T2-T12 remain pending.</strong> Pixel-level OCR of the baked art also corrected three UI facts below: numeric <code>SOS</code> is on row 2, numeric bottom-right is the <code>LINK</code> indicator (not punctuation), and the alpha <code>WXYZ</code> group gains <code>V</code> as a fifth tap. See the corrected §5.4.
 </div>
 
 <nav class="toc" aria-label="Table of contents">
@@ -192,18 +192,18 @@
 
 <h3>3.1 The truthful version of the AP/STA rule</h3>
 <p>The CYW43439 and the Pico SDK expose two Wi-Fi roles: <strong>AP</strong> (host the network) and <strong>STA</strong> (join it). The SDK has no supported ad-hoc/IBSS path, so <strong>exactly one board must be the AP</strong>. That part of the earlier advice is true.</p>
-<p>What is <em>not</em> true is that this requires two codebases. AP/STA is a radio-link role. TX/RX is what a packet is doing. They are orthogonal. Both builds run the same transceiver; with input hardware attached, either can type, send, receive, decode, and render. The correct architecture is <strong>one firmware, one flag</strong>:</p>
+<p>What is <em>not</em> true is that this requires two codebases. AP/STA is a radio-link role. TX/RX is what a packet is doing. They are orthogonal. Both boards carry the same BOM and run the same transceiver, so either can type, send, receive, decode, and render. The correct architecture is <strong>one firmware, one flag</strong>:</p>
 
 <div class="seq">            2.4 GHz Wi-Fi (private AP, no router)
    ┌──────────────────────────┐        ┌──────────────────────────┐
    │  Barebones  ·  AP role   │        │  Jank Box 5000 · STA role│
-   │  host / serial verify    │◄──────►│  UI + joystick + buttons │
+   │  OLED + joystick + buttons│◄──────►│  OLED + joystick + buttons│
    │  UDP :4444               │        │  UDP :4444               │
    │  HELLO_ACK, LINK_PING    │        │  HELLO, LINK_PONG        │
    └──────────────────────────┘        └──────────────────────────┘
         same main.c, IS_AP=1                 same main.c, IS_AP=0</div>
 
-<p>For the PoC, the user confirmed <strong>Barebones = AP (host)</strong> and <strong>Jank Box 5000 = STA (client)</strong>. The earlier audit recommendation (Jank Box = AP) is superseded. The Barebones host has no joystick/buttons attached, so AP-side typing is unavailable and the board is verified through its USB serial log; the Jank Box 5000 has the controls. Both builds still compile the same transceiver, UI, and input path. The code does not care which physical board plays which role; only the UF2 differs.</p>
+<p>For the PoC, the user confirmed <strong>Barebones = AP (host)</strong> and <strong>Jank Box 5000 = STA (client)</strong>. The earlier audit recommendation (Jank Box = AP) is superseded. Both units now carry the identical BOM: SH1106 OLED, PSP joystick on ADC0/ADC1, and SELECT/DELETE on GP14/GP15. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC, button, codec, parser, and screen paths are unconditional, so both boards type, send, receive, decode, and render. Wi-Fi bring-up is non-blocking, so the UI and controls run while the STA joins. The code does not care which physical board plays which role; only the UF2 differs.</p>
 
 <h3>3.2 One source, two build targets</h3>
 <p>Move the RX <code>main.c</code> to the canonical firmware project, replace the hard <code>#define IS_AP</code> with a default, and let CMake define it per target:</p>
@@ -229,7 +229,7 @@ foreach(tgt phantom_link_ap phantom_link_sta)
   pico_add_extra_outputs(${tgt})
 endforeach()</code></pre>
 
-<p>This produces <code>phantom_link_ap.uf2</code> and <code>phantom_link_sta.uf2</code> from one source. Both builds run the same UI, input, codec, and parser; only the Wi-Fi bring-up differs. “Identical firmware” here means identical source and behavior, not byte-identical UF2s: the role constant is compiled in. If you want one binary that is literally identical on both boards, read SELECT at boot (held = AP, released = STA) and use a runtime <code>is_ap</code> variable. That is still one codebase; for the PoC, two deterministic targets are easier to debug.</p>
+<p>This produces <code>phantom_link_ap.uf2</code> and <code>phantom_link_sta.uf2</code> from one source. Both builds run the same UI, input, codec, and parser; only the Wi-Fi bring-up differs. “Identical firmware” here means identical source and behavior, not byte-identical UF2s: the role constant is compiled in. The implementation stores it in a <code>static const bool is_ap</code> and keeps the OLED, ADC, button, codec, and parser paths outside every role conditional. A future single-binary option is to read SELECT at boot (held = AP, released = STA) and set the same runtime variable; for the PoC, two deterministic targets are easier to debug.</p>
 
 <h3>3.3 Why the split happened, and why it must be closed now</h3>
 <p>The TX folder was built at 16:16 on 11/15; the RX folder was last edited at 17:21. All Base-6 work landed in RX after the TX snapshot. Every hour spent maintaining two trees from here will recreate the same drift. The repository must have one firmware source before the handshake work starts, or the next feature will land on one board only again.</p>
@@ -394,7 +394,7 @@ endforeach()</code></pre>
   <li>Create <code>firmware/</code> at the repo root (or rename <code>Phantom_Link_rx</code> to <code>firmware</code>). Move <code>main.c</code>, <code>oled.h</code>, <code>font_ui.h</code>, <code>alpha_ui.h</code>, <code>numeric_ui.h</code>, <code>boot_ui.h</code>, <code>lwipopts.h</code>, and <code>CMakeLists.txt</code> into it. Keep the PNG sources in <code>assets/</code>.</li>
   <li>Replace the hard <code>#define IS_AP 0</code> with the <code>#ifndef</code> default from §3.2.</li>
   <li>Change the CMake target list to the two-target <code>foreach</code> from §3.2.</li>
-  <li>Build both; flash AP to the Barebones and STA to the Jank Box 5000; verify the Jank Box UI/input and the Barebones AP serial log.</li>
+  <li>Build both; flash AP to the Barebones and STA to the Jank Box 5000; verify the UI and input on both boards.</li>
   <li>Only then delete <code>Phantom_Link_tx</code> from the working tree. Keep its last <code>.uf2</code> in <code>artifacts/uf2/</code> (gitignored) as a rollback.</li>
 </ol>
 
@@ -878,12 +878,12 @@ void tx_tick(void) {
   <li>Create <code>firmware/</code>; move the RX tree’s source and assets into it (or rename the RX tree). Keep the PNG sources in <code>assets/</code>.</li>
   <li>Replace <code>#define IS_AP 0</code> with the <code>#ifndef IS_AP / #define IS_AP 1</code> default.</li>
   <li>Replace the CMake target with the two-target <code>foreach</code> in §3.2.</li>
-  <li>Use the RX <code>main.c</code> as the shared source; the AP build inherits the full input loop (<code>adc_init()</code>, <code>adc_gpio_init(26/27)</code>, <code>gpio_init/pull_up(14/15)</code>, joystick reads, button reads, <code>handle_select_button()</code>, <code>handle_delete_button()</code>). Do not copy the TX main.</li>
+  <li>Use the RX <code>main.c</code> as the shared source; keep the full input loop (<code>adc_init()</code>, <code>adc_gpio_init(26/27)</code>, <code>gpio_init/pull_up(14/15)</code>, joystick reads, button reads, <code>handle_select_button()</code>, <code>handle_delete_button()</code>) outside every role conditional. Do not copy the TX main.</li>
   <li>Keep the RX UI, font, and codec exactly as they are for this phase. Do not add the handshake yet.</li>
-  <li>Build both targets, flash AP to the Barebones and STA to the Jank Box 5000. Verify the Jank Box menu responds to the joystick and buttons; verify the Barebones AP boots and logs over USB serial. The Barebones has no joystick/buttons attached, so AP-side typing is not part of this test.</li>
+  <li>Build both targets, flash AP to the Barebones and STA to the Jank Box 5000. Verify each board boots the menu and responds to the joystick and buttons. Both units carry the identical BOM.</li>
   <li>Archive the old TX tree (or delete it in a separate commit after both targets are verified).</li>
 </ol>
-<p><strong>Done when:</strong> both UF2s come from the same source; the Jank Box boots the UI, moves the cursor, and types; the Barebones AP boots and logs over serial; the serial banners differ only by role.</p>
+<p><strong>Done when:</strong> both UF2s come from the same source; both boards boot the UI, move the cursor, and type; the serial banners differ only by role.</p>
 
 <h3>Phase 3 - Handshake, peer learning, heartbeat</h3>
 <p><strong>Goal:</strong> Both boards know whether the link is up, learn each other’s address from the traffic, and refuse to send into the void. This is the handshake-first milestone; the full data codec is Phase 4.</p>
@@ -970,7 +970,7 @@ void tx_tick(void) {
 <h3>7.1 Build both targets</h3>
 
 <div class="callout good">
-  <strong>Verified 2026-11-18 on native Windows.</strong> Both targets built warning-free from the single <code>firmware/main.c</code> after a clean configure. Outputs: <code>phantom_link_ap.uf2</code> (670,720 bytes) and <code>phantom_link_sta.uf2</code> (674,304 bytes). The differing sizes are expected because the role branch is compiled in. SHA256: <code>50C5B4639B44842D5D17763AF4DEBFF11AB37A47E1E73412CC7551230DE4C8AF</code> (AP), <code>3347AE0724F29B2BDB5D1BAC5DE2447E1FF5BA7221C4732E83EA3C89863B9C0F</code> (STA).
+  <strong>Verified 2026-11-18 on native Windows.</strong> Both targets built warning-free from the single <code>firmware/main.c</code> after a clean configure. Outputs: <code>phantom_link_ap.uf2</code> (670,720 bytes) and <code>phantom_link_sta.uf2</code> (674,816 bytes). The small size difference reflects the Wi-Fi role branch; the OLED, ADC, button, codec, and parser paths are shared and unconditional. SHA256: <code>04011281D53C5D4CDCEBD6B246A7351B8595A98652CAD92E4A85D4BFC1B2201A</code> (AP), <code>EF3465E1A30EB3605D98FF1B6FE2CF02DE51AB8EB6B9563BE6FD098BAD7E19F1</code> (STA).
 </div>
 
 <pre><code># PowerShell - exact commands used for the verified build
@@ -988,7 +988,7 @@ Get-Item build\phantom_link_ap.uf2, build\phantom_link_sta.uf2 | Select-Object N
 
 <h4>Host-side validation</h4>
 <pre><code>python firmware\tests\validate_assets.py</code></pre>
-<p>Expected final line: <code>HOST VALIDATION: PASS</code>. This needs neither the SDK nor a board. It checks the 48-glyph/180-byte font, the merged quote, <code>V</code>, all 49 Base-6 codes, the 21-character round-trip, multi-tap reachability, and the numeric hitboxes.</p>
+<p>Expected final line: <code>HOST VALIDATION: PASS</code>. This needs neither the SDK nor a board. It checks the 48-glyph/180-byte font, the merged quote, <code>V</code>, all 49 Base-6 codes, the 21-character round-trip, multi-tap reachability, the numeric hitboxes, and that the role flag no longer gates the UI or input path.</p>
 
 <h4>WSL alternative</h4>
 <pre><code>cd "/mnt/c/Users/Windows 10/OneDrive/Desktop/Phantom_Link/firmware"
@@ -1063,24 +1063,24 @@ sha256sum artifacts/uf2/*.uf2 | tee artifacts/uf2/SHA256SUMS</code></pre>
 <h2 id="s8">8. Acceptance test matrix</h2>
 
 <div class="callout good">
-  <strong>Current status (2026-11-18).</strong> T1 is green: both targets build from one source with zero warnings, and host validation passed for the font, codec, and UI hitboxes. T2-T12 require the two boards and are still pending because no board was connected during the implementation session.
+  <strong>Current status (2026-11-18).</strong> T1 is green: both targets build from one source with zero warnings, host validation passed for the font, codec, UI hitboxes, and unconditional input path, and `IS_AP` no longer gates the UI or controls. T2-T12 require the two boards and are still pending because no board was connected during the implementation session.
 </div>
 
 <table>
   <thead><tr><th style="width:52px">ID</th><th style="width:190px">Test</th><th>Steps</th><th style="width:30%">Expected / pass criterion</th></tr></thead>
   <tbody>
     <tr><td><strong>T1</strong></td><td>Single-source build</td><td>Clean <code>build/</code>; build both targets from one <code>main.c</code>.</td><td>Two UF2s produced; no duplicated source; zero warnings with <code>-Wall -Wextra</code>.</td></tr>
-    <tr><td><strong>T2</strong></td><td>Boot and STA UI</td><td>Flash AP to the Barebones and STA to the Jank Box 5000; power both; on the Jank Box, move the joystick and press each button; watch the AP serial.</td><td>AP prints its role banner, <code>AP active</code>, and <code>UDP listening</code>. Jank Box shows the menu; cursor moves; multi-tap types; DELETE deletes. The Barebones has no joystick/buttons attached, so AP-side typing is not part of this test.</td></tr>
+    <tr><td><strong>T2</strong></td><td>Dual boot UI</td><td>Flash AP to the Barebones and STA to the Jank Box 5000; power both; on each board, move the joystick and press each button.</td><td>Both show the menu; cursor moves; multi-tap types; DELETE deletes. Both boards carry the identical BOM. Splash timing is T11.</td></tr>
     <tr><td><strong>T3</strong></td><td>Association</td><td>Boot AP, then STA; watch both serial monitors.</td><td>STA joins <code>Phantom_Link</code>; AP logs the peer; no 3 s timeout failure.</td></tr>
     <tr><td><strong>T4</strong></td><td>Handshake</td><td>Cold boot both; watch both monitors.</td><td>STA sends <code>HELLO</code>; AP replies <code>HELLO_ACK</code>; both print <code>LINK UP</code> with the peer IP.</td></tr>
     <tr><td><strong>T5</strong></td><td>Heartbeat / loss / recovery</td><td>Power-cycle the STA. Watch the AP during the outage; watch both after the STA boots.</td><td>AP prints <code>LINK LOST</code> within 3 s; after the STA returns, the AP prints <code>LINK UP</code> without an AP reboot and the STA prints <code>LINK UP</code>; LED follows state.</td></tr>
-    <tr><td><strong>T6</strong></td><td>SOS round-trip</td><td>On the Jank Box STA, select <code>SOS</code> (numeric row 2) and press SELECT; watch the AP serial. AP-to-STA data requires input hardware on the Barebones.</td><td>AP serial prints <code>!!! SOS SIGNAL RECEIVED !!!</code> for an exact <code>SOS</code>; non-SOS messages print <code>Secret Msg: ...</code>; no false SOS. The STA OLED shows <code>SOS</code> only when the AP sends one.</td></tr>
-    <tr><td><strong>T7</strong></td><td>Full glyph set</td><td>On the Jank Box STA, send <code>TEST 123 =+-.,?!()[]&quot;</code>; watch the AP serial. AP-to-STA data requires input hardware on the Barebones.</td><td>AP serial prints the exact 21-character message; every glyph survives; logs show three frames per char. AP-to-STA OLED verification requires AP input hardware.</td></tr>
-    <tr><td><strong>T8</strong></td><td>IN RANGE?</td><td>Select <code>IN RANGE?</code>; press SELECT.</td><td><code>LINK_PING</code>/<code>LINK_PONG</code> exchange; <code>RTT: n ms</code> printed. The OLED label is baked art in this PoC, so serial is the pass criterion.</td></tr>
-    <tr><td><strong>T9</strong></td><td>No-link gate</td><td>Power off the Barebones AP; wait for the Jank Box STA to print <code>LINK LOST</code>; try SEND on the STA.</td><td><code>NO LINK</code>; the draft is kept; no packets claimed as sent. AP-side gating requires AP input hardware.</td></tr>
-    <tr><td><strong>T10</strong></td><td>Non-blocking send</td><td>On the Jank Box STA, send a 30-char message; press DELETE mid-send.</td><td>STA serial/OLED stay responsive; DELETE cancels; no Wi-Fi stall; message state is deterministic.</td></tr>
-    <tr><td><strong>T11</strong></td><td>Boot splash</td><td>Power-cycle the Jank Box STA; power-cycle the AP too if its OLED is attached; time each splash.</td><td><code>boot.png</code> displays for ~2.5 s on the Jank Box, then the menu; no blank 2 s gap. AP splash is only observable with an OLED attached.</td></tr>
-    <tr><td><strong>T12</strong></td><td>Soak</td><td>30 minutes, one STA-to-AP message every 30 s; heartbeat/control traffic runs both ways.</td><td>≥99% data delivery in the same room; no desync; no watchdog resets; current draw recorded. AP-to-STA data soak requires AP input hardware.</td></tr>
+    <tr><td><strong>T6</strong></td><td>SOS round-trip</td><td>Select <code>SOS</code> (numeric row 2) on either board and press SELECT; watch the other serial log and OLED; repeat in the other direction.</td><td>Receiving serial prints <code>!!! SOS SIGNAL RECEIVED !!!</code> for an exact <code>SOS</code>; non-SOS messages print <code>Secret Msg: ...</code>; the other OLED shows <code>SOS</code>; no false SOS.</td></tr>
+    <tr><td><strong>T7</strong></td><td>Full glyph set</td><td>Send <code>TEST 123 =+-.,?!()[]&quot;</code> from each board; watch the other serial log and OLED.</td><td>Every glyph round-trips exactly in both directions; no character becomes <code>A</code>; logs show three frames per char.</td></tr>
+    <tr><td><strong>T8</strong></td><td>IN RANGE?</td><td>Select <code>IN RANGE?</code> on either board; press SELECT.</td><td><code>LINK_PING</code>/<code>LINK_PONG</code> exchange; <code>RTT: n ms</code> printed. The OLED label is baked art in this PoC, so serial is the pass criterion.</td></tr>
+    <tr><td><strong>T9</strong></td><td>No-link gate</td><td>Power off one board; wait for the other to print <code>LINK LOST</code>; try SEND on the powered board. Repeat with the roles reversed.</td><td><code>NO LINK</code>; the draft is kept; no packets claimed as sent.</td></tr>
+    <tr><td><strong>T10</strong></td><td>Non-blocking send</td><td>Send a 30-char message from either board; press DELETE mid-send.</td><td>Serial/OLED stay responsive; DELETE cancels; no Wi-Fi stall; message state is deterministic.</td></tr>
+    <tr><td><strong>T11</strong></td><td>Boot splash</td><td>Power-cycle both boards; time each splash.</td><td><code>boot.png</code> displays for ~2.5 s on both, then the menu; no blank 2 s gap.</td></tr>
+    <tr><td><strong>T12</strong></td><td>Soak</td><td>30 minutes, one message every 30 s, alternating directions.</td><td>≥99% delivery in the same room; no desync; no watchdog resets; current draw recorded.</td></tr>
   </tbody>
 </table>
 
@@ -1168,10 +1168,10 @@ learns the STA from the received datagram. There is no forced static IP.</code><
 
 <h3>10.2 What to state in the first message</h3>
 <ol>
-  <li><strong>Project:</strong> Phantom Link, two Pico 2 W. Barebones AP (host, no joystick/buttons), Jank Box 5000 STA (client, SH1106 OLED, PSP joystick, SELECT GP14 / DELETE GP15).</li>
+  <li><strong>Project:</strong> Phantom Link, two Pico 2 W with identical BOM: SH1106 OLED, PSP joystick, SELECT GP14 / DELETE GP15. Barebones = AP host; Jank Box 5000 = STA client.</li>
   <li><strong>Current commit/branch:</strong> e.g., <code>main @ a5ee129</code> or <code>poc/handshake @ &lt;hash&gt;</code>.</li>
-  <li><strong>Hardware roles:</strong> which physical board is AP, which is STA; which COM ports.</li>
-  <li><strong>What works:</strong> unified build, Jank Box UI/input, full 49-code Base-6, handshake/peer learning, heartbeat/timeout, non-blocking TX, boot splash, serial logging. The Barebones AP has no joystick/buttons attached and is verified through serial.</li>
+  <li><strong>Hardware roles:</strong> which physical board is AP, which is STA; which COM ports. Both have the full OLED/joystick/button BOM.</li>
+  <li><strong>What works:</strong> unified build, full UI/input on both roles, full 49-code Base-6, handshake/peer learning, heartbeat/timeout, non-blocking TX, boot splash, serial logging.</li>
   <li><strong>What fails:</strong> the exact hardware test, the exact serial output, the exact OLED photo. If nothing has been flashed yet, say so explicitly.</li>
   <li><strong>Decisions already made:</strong> one source/two targets; Barebones = AP, Jank Box 5000 = STA; 3-digit codec; boot splash in scope; encryption deferred until the handshake passes on hardware.</li>
   <li><strong>Next task:</strong> flash both UF2s and run T2-T12 from §8, starting with T3/T4.</li>
@@ -1195,19 +1195,21 @@ HARDWARE
   DC GP16, CS GP17, +2 column offset
 - PSP-1000 joystick: X GP26/ADC0, Y GP27/ADC1
 - SELECT GP14, DELETE GP15, both to GND with internal pull-ups
-- AP board: Barebones (host, no joystick/buttons attached)
-- STA board: Jank Box 5000 (client, OLED + joystick + buttons)
+- AP board: Barebones (host; OLED + joystick + buttons)
+- STA board: Jank Box 5000 (client; identical BOM)
 - Serial: [COMx / /dev/ttyACM0] = AP, [COMy / /dev/ttyACM1] = STA
 
 CURRENT STATE
-- Implemented in firmware/: one main.c, dual AP/STA targets, full input loop,
-  49-code 3-digit Base-6, exact tokens, HELLO/HELLO_ACK/LINK_PING/LINK_PONG,
-  peer learning, 1 s heartbeat, 3 s timeout, non-blocking TX, boot splash.
+- Implemented in firmware/: one main.c, dual AP/STA targets, unconditional
+  OLED/ADC/button/input path, 49-code 3-digit Base-6, exact tokens,
+  HELLO/HELLO_ACK/LINK_PING/LINK_PONG, peer learning, 1 s heartbeat,
+  3 s timeout, non-blocking TX, boot splash. IS_AP selects only Wi-Fi mode.
 - Build verified on native Windows with Pico SDK 2.3.1:
   firmware/build/phantom_link_ap.uf2 (670,720 bytes),
-  firmware/build/phantom_link_sta.uf2 (674,304 bytes), zero warnings.
+  firmware/build/phantom_link_sta.uf2 (674,816 bytes), zero warnings.
 - Host validation passed: 48-glyph/180-byte font, all 49 codec values,
-  21-character round-trip, V reachable, corrected numeric hitboxes.
+  21-character round-trip, V reachable, corrected numeric hitboxes,
+  unconditional input/UI path.
 - Hardware acceptance T2-T12 is pending; no board was connected.
 - Encryption, CRC/framing, authentication, sequence/duplicate detection,
   and MAC-layer SFO are not implemented.
@@ -1228,7 +1230,7 @@ Flash the two UF2s and run the hardware acceptance matrix:
 3. Run T2-T12 from the audit. Start with T3 (association) and T4 (handshake),
    then T5 (loss/recovery), T6/T7 (SOS and full glyph set), T9/T10 (no-link
    gate and non-blocking send).
-4. Paste both serial logs and a photo of each attached OLED. Report the first failing
+4. Paste both serial logs and a photo of each OLED. Report the first failing
    test exactly; do not reimplement Phases 2-5.
 Minimum green bar: T1-T7, T9, T10. T8/T11/T12 are implemented and should be
 tested before calling the PoC stable.
