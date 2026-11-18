@@ -1,0 +1,68 @@
+You are a senior embedded systems engineer. We are continuing the
+Phantom Link project. Read the attached PHANTOM_LINK_AUDIT_AND_HANDOFF.html
+before proposing code. Source of truth: the code, then the audit, then README.
+Do not trust README claims about encryption, static IP, or AP role; they are
+behind the firmware.
+
+REPO: https://github.com/GoodFractals/Phantom-Link
+COMMIT: [paste hash]
+BRANCH: [main or poc/handshake]
+
+HARDWARE
+- 2x Raspberry Pi Pico 2 W (RP2350 + CYW43439)
+- Inland 1.3" SH1106 128x64 SPI OLED on the Jank Box: CLK GP18, MOSI GP19,
+  RES GP20, DC GP16, CS GP17, +2 column offset
+- PSP-1000 joystick: X GP26/ADC0, Y GP27/ADC1
+- SELECT GP14, DELETE GP15, both to GND with internal pull-ups
+- AP board: Barebones (host, no joystick/buttons; verify over USB serial)
+- STA board: Jank Box 5000 (client, joystick/buttons/OLED)
+- Serial: [COMx / /dev/ttyACM0] = AP, [COMy / /dev/ttyACM1] = STA
+
+CURRENT STATE
+- Implemented in firmware/: one main.c, dual AP/STA targets, shared UI/input
+  path, 49-code 3-digit Base-6, exact tokens, HELLO/HELLO_ACK/LINK_PING/
+  LINK_PONG, peer learning, 1 s heartbeat, 3 s timeout, non-blocking TX.
+- The Jank Box has the OLED/controls; the Barebones AP has no joystick/buttons
+  and is verified over serial.
+- Build verified on native Windows with Pico SDK 2.3.1:
+  firmware/build/phantom_link_ap.uf2 (670,720 bytes),
+  firmware/build/phantom_link_sta.uf2 (674,304 bytes), zero warnings.
+- Host validation passed: 48-glyph/180-byte font, all 49 codec values,
+  21-character round-trip, V reachable, corrected numeric hitboxes.
+- Re-run it with: python firmware/tests/validate_assets.py
+  Expected final line: HOST VALIDATION: PASS.
+- Hardware acceptance T2-T12 is pending; no board was connected.
+- Encryption, CRC/framing, authentication, sequence/duplicate detection,
+  and MAC-layer SFO are not implemented.
+- Phantom_Link_rx/ and Phantom_Link_tx/ are rollback/reference only.
+
+DECISIONS
+- One firmware source, two build targets: phantom_link_ap (IS_AP=1) and
+  phantom_link_sta (IS_AP=0).
+- AP role: Barebones; STA role: Jank Box 5000. Confirmed before flashing.
+- Codec: 3-digit Base-6 over 49 codes (48 glyphs + space), implemented.
+- Do not add Speck or MAC-layer SFO until the testable T1-T7, T9, T10 path passes.
+
+NEXT TASK
+Flash the two UF2s and run the hardware acceptance matrix:
+1. Barebones AP: firmware/build/phantom_link_ap.uf2; Jank Box 5000 STA:
+   firmware/build/phantom_link_sta.uf2.
+2. Open one serial monitor per board at 115200 8N1. The AP serial log is the
+   AP-side verification because the Barebones has no joystick/buttons.
+3. Run T2-T12 from the audit. Start with T3 (association) and T4 (handshake),
+   then T5 (loss/recovery), T6/T7 (SOS and full glyph set from the STA),
+   T9/T10 (no-link gate and non-blocking send on the STA).
+4. Paste both serial logs and a photo of the Jank Box OLED. Report the first
+   failing test exactly; do not reimplement Phases 2-5.
+Minimum green bar on the current hardware: T1-T5, T6/T7 in the STA-to-AP
+direction, and T9/T10 on the STA. AP-to-STA data requires adding input
+hardware to the Barebones. T8/T11/T12 are implemented and should be tested
+before calling the PoC stable.
+
+RULES
+- Do not rewrite the UI art.
+- Do not add crypto or MAC-layer SFO yet.
+- Do not clean build until the working UF2s are archived.
+- Do not claim "encrypted" or "covert" in docs until implemented.
+- Ask for serial logs/photos when a hardware result is ambiguous.
+- Keep the Project Bible out of the public repo (personal data).

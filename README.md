@@ -1,30 +1,170 @@
-# Phantom Link: Encrypted Wireless Covert Channel [Active - WIP]
+# Phantom Link: Routerless Wireless Link [Handshake PoC]
 
-Have you ever wanted to use Wi-Fi in the middle of the desert?
-Phantom Link is a standalone, encrypted, bidirectional wireless communication device built from scratch using two Raspberry Pi Pico 2 W microcontrollers. 
+Phantom Link is a standalone, bidirectional wireless link built from two Raspberry Pi Pico 2 W boards, SH1106 OLED hardware, and a PSP-1000 analog joystick. The Jank Box 5000 is the full UI client; the Barebones Pico is the AP host with no joystick or buttons attached. One board hosts a private Wi-Fi network; the other joins it. No router, access point, or phone is required.
 
-This project demonstrates low-level hardware hacking, bypassing standard Wi-Fi networking stacks to establish a custom, encrypted UDP link. Messages are encrypted, transmitted over raw 2.4GHz RF, decrypted, and displayed on standalone OLED hardware.
+This is a handshake-first proof of concept. The link is **plaintext** right now: the firmware implements the OLED UI, input, character codec, UDP transport, peer learning, heartbeat, and timeout. Encryption, framing/CRC, authentication, replay protection, and true MAC-layer steganography are **planned but not implemented**. The project is presented as an embedded-systems prototype, not as a finished secure communicator.
+
+## Status (2026-11-18)
+
+**Working in source and host-verified**
+- 128×64 SH1106 SPI driver with a 1024-byte framebuffer and custom variable-width font.
+- Alpha and Numeric UI pages, joystick navigation, SELECT/DELETE edge handling, and multi-tap text entry.
+- Full 49-character transport alphabet: 48 drawable glyphs plus space.
+- 3-digit Base-6 transport, three symbols per character, 80 ms per symbol.
+- Exact-length `HELLO`, `HELLO_ACK`, `LINK_PING`, `LINK_PONG`, and `END` parsing.
+- Peer address learning from the received UDP packet; no hardcoded STA reply address.
+- 1 s heartbeat, 3 s link timeout, `LINK UP` / `LINK LOST` serial logs, and link-state LED.
+- Non-blocking transmit state machine; `cyw43_arch_poll()` runs continuously.
+- Boot splash from `boot_ui.h`, restored UI after boot, and draft/response text on separate rows.
+- Two build targets from one `main.c`: `phantom_link_ap` (`IS_AP=1`) and `phantom_link_sta` (`IS_AP=0`).
+- Host validation: font table, all 49 codec values, a 21-character round-trip, `V` reachability, and the corrected numeric hitboxes pass.
+
+**Hardware status**
+- Both UF2s build warning-free with Pico SDK 2.3.1 on native Windows.
+- `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (674,304 bytes) were produced and inspected with `picotool`.
+- **No board was connected during the build session.** Boot, Jank Box typing/rendering, handshake, timeout/recovery, and both serial logs still need hardware acceptance testing. The Barebones AP has no joystick/buttons attached and is verified through its USB serial log. See the test matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
+
+**Not implemented yet**
+- Encryption (Speck is planned), key exchange, authentication, replay protection.
+- CRC, message IDs, sequence numbers, duplicate detection, retransmission.
+- MAC-layer StegoFrameOrder; the current SFO is an application-layer packet-name PoC.
+- Battery monitoring, enclosure, range/power measurements, antenna modification.
 
 ## Architecture
 
-The system operates without a standard Wi-Fi router. The Receiver (RX) acts as a private Access Point, and the Transmitter (TX) connects as a client via a forced static IP to bypass DHCP timing constraints. 
+The CYW43439/Pico SDK supports AP and STA roles, not ad-hoc/IBSS. Exactly one board must therefore be the AP. That does not require two codebases:
 
-Once the link is established, the TX packages plaintext into a custom C `struct`, encrypts the payload, and blasts it over a custom UDP socket. The RX intercepts the packet, verifies the size and sync word, decrypts the payload, and updates the SPI OLED screen.
+- **AP/STA** is the radio role.
+- **TX/RX** is what a packet is doing.
+- Both roles compile the same transceiver, UI, input, codec, and parser path. The Jank Box 5000 has the physical joystick/buttons; the Barebones AP has no joystick/buttons attached and is verified over serial. Both roles can send and receive; only the STA currently has the attached input hardware.
 
-## Key Features
+One `firmware/main.c` is compiled twice. `phantom_link_ap` hosts the private network; `phantom_link_sta` joins it and sends the first `HELLO`. The STA learns the AP address from `HELLO_ACK`; the AP learns the STA address from the received datagram. There is no forced static IP.
 
-*   **Custom Encryption:** Utilizes an XOR cipher (moving to Speck in future updates) to encrypt payloads before transmission.
-*   **Custom Packet Structs:** Packets are packed with `__attribute__((packed))` to ensure byte-for-byte alignment across the link.
-*   **Pixel-Perfect UI Pipeline:** Developed a custom Python/ImageMagick pipeline to convert 128x64 PNG assets into 1024-byte C-arrays, bypassing bloated graphics libraries and achieving a true 1:1 pixel ratio on the SH1106 OLED.
-*   **Hardware Interfacing:** Custom SPI driver written from scratch for the OLED, and analog joystick input via the ADC.
+Network defaults:
 
-## Tech Stack
+| Setting | Value |
+|---|---|
+| SSID | `Phantom_Link` |
+| Password | `12345678` |
+| UDP port | `4444` |
+| AP address | `192.168.4.1` |
+| STA address | DHCP |
 
-*   **Language:** C (C11)
-*   **SDK:** Raspberry Pi Pico SDK
-*   **Networking:** lwIP (Lightweight IP) stack, UDP
-*   **Build System:** CMake (compiled entirely in WSL Ubuntu)
-*   **Hardware:** 2x Pico 2 W, 2x Inland 1.3" SH1106 SPI OLEDs, 2x Sony PSP 1000 analog joysticks, breadboards, buttons.
+The SSID/password are development defaults, not a security model. Change them before using the device outside a bench.
+
+## Protocol
+
+Control packets are exact strings, checked before symbol decoding:
+
+| Token | Direction | Meaning |
+|---|---|---|
+| `HELLO` | STA → AP | Request a link; AP learns the peer address |
+| `HELLO_ACK` | AP → STA | Accept; STA learns the AP address |
+| `LINK_PING` | Both | 1 s heartbeat |
+| `LINK_PONG` | Both | Heartbeat reply |
+| `END` | Sender → receiver | Finish the current message |
+
+Data symbols are `PING`, `ACK`, `SYNC`, `PONG`, `DATA`, and `READY`, representing Base-6 digits 0–5. A character is `d0*36 + d1*6 + d2` over the alphabet:
+
+```text
+" ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789=+-.,?!()[]\""
+```
+
+There is no encryption, CRC, or sequence header yet. A lost symbol can desynchronize a message; the receiver resets the three-symbol accumulator after a 500 ms gap and drops a partial final glyph at `END`.
+
+## Hardware
+
+- 2× Raspberry Pi Pico 2 W (RP2350 + CYW43439).
+- 2× Inland 1.3" SH1106 128×64 SPI OLED.
+  - CLK GP18, MOSI GP19, RES GP20, DC GP16, CS GP17.
+  - SH1106 column offset +2.
+- PSP-1000 analog joystick: X GP26/ADC0, Y GP27/ADC1.
+- SELECT GP14, DELETE GP15; active-low to GND with internal pull-ups.
+- USB power for bench testing. The AP + OLED load has not yet been characterized on battery.
+
+## Build
+
+The verified path is native Windows with Pico SDK 2.3.1, CMake 4.0.0-rc1, Ninja 1.13.2, and Arm GNU Toolchain 14.2. Put the SDK's `pioasm`, `picotool`, Ninja, and `arm-none-eabi` tools on `PATH`; otherwise CMake tries to build the host tools from source.
+
+```powershell
+$env:PICO_SDK_PATH = "C:\Users\<you>\.pico-sdk\sdk\2.3.1"
+$env:PATH = "C:\Users\<you>\.pico-sdk\tools\2.3.1\pioasm;C:\Users\<you>\.pico-sdk\picotool\2.3.1\picotool;C:\Users\<you>\.pico-sdk\ninja\v1.13.2;C:\Program Files (x86)\Arm GNU Toolchain arm-none-eabi\14.2 rel1\bin;$env:PATH"
+
+Set-Location "C:\Users\<you>\OneDrive\Desktop\Phantom_Link"
+cmake -S firmware -B firmware/build -G Ninja -DPICO_BOARD=pico2_w "-DPICO_SDK_PATH=$env:PICO_SDK_PATH"
+cmake --build firmware/build -j4
+
+Get-Item firmware\build\phantom_link_ap.uf2, firmware\build\phantom_link_sta.uf2 |
+    Select-Object Name, Length
+```
+
+The full audit contains the exact commands used on the build machine and a WSL alternative (unverified in the build session).
+
+Host-side asset validation does not need the SDK or a board:
+
+```powershell
+python firmware\tests\validate_assets.py
+```
+
+Expected final line: `HOST VALIDATION: PASS`.
+
+## Flash
+
+Hold **BOOTSEL**, plug in USB, and copy the matching UF2 to the `RPI-RP2` volume. The board reboots automatically.
+
+```powershell
+Get-Volume | Where-Object FileSystemLabel -eq 'RPI-RP2'
+
+# First board: AP
+Copy-Item "firmware\build\phantom_link_ap.uf2" E:\
+
+# Second board: STA
+Copy-Item "firmware\build\phantom_link_sta.uf2" E:\
+```
+
+For the PoC, **Barebones = AP (host)** and **Jank Box 5000 = STA (client)**. The roles are compiled in and are not interchangeable at runtime; flash the matching UF2 to each board.
+
+Open one serial monitor per board at 115200 8N1. Expected boot banners:
+
+```text
+--- PHANTOM LINK AP ---
+AP active: 192.168.4.1
+UDP listening on 4444
+```
+
+```text
+--- PHANTOM LINK STA ---
+STA connecting to Phantom_Link...
+STA IP: 192.168.4.x
+TX HELLO
+RX HELLO_ACK
+LINK UP (HELLO_ACK) peer=192.168.4.1:4444
+```
+
+## Repository layout
+
+```text
+firmware/            Unified AP/STA firmware and build definition
+  main.c             UI, input, codec, UDP link, handshake, timeout
+  oled.h             SH1106 driver and framebuffer helpers
+  font_ui.h          48-glyph variable-width font
+  alpha_ui.h         1024-byte Alpha page art
+  numeric_ui.h       1024-byte Numeric page art
+  boot_ui.h          1024-byte boot splash art
+  CMakeLists.txt     phantom_link_ap + phantom_link_sta targets
+  tests/             Host-side font/codec/UI validation (no SDK needed)
+docs/                Audit, remediation plan, test matrix, AI handoff
+Phantom_Link_rx/     Original RX firmware, kept as rollback reference
+Phantom_Link_tx/     Original TX tree, stale pre-Base-6 fork
+```
+
+The pre-audit RX tree is retained for rollback. The unified firmware is the active source.
+
+## Documentation
+
+- `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` — complete forensic audit, defect register, protocol/UI designs, build order, acceptance matrix, and handoff packet.
+- `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.md` — compact digest.
+- `docs/NEXT_CONTEXT_PROMPT.txt` — copy-paste bootstrap for a new AI context.
 
 ## Gallery
 
@@ -54,12 +194,20 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 
 ## Roadmap
 
-- [x] Establish encrypted UDP link over private AP.
-- [x] Develop custom SPI OLED driver and PNG-to-C pipeline.
-- [x] Implement T9 text-input UI (Alpha/Numeric states) with joystick navigation.
-- [x] Create manual sprites for each typable character and symbol for custom font insertion [single-pass].
-- [ ] Implement button functionality and menu wrap-around logic
-- [ ] Upgrade payload encryption to Speck Cipher.
-- [ ] Implement MAC-layer steganography (StegoFrameOrder) for stealth signaling.
-- [ ] Package into enclosure and untether using 2000mah battery bank.
-- [ ] [Undecided/Optional] Dig up antenna trace to solder intel 2.4 ghz antenna on each Pico for signal amplification.
+- [x] Establish a routerless private AP / STA UDP link.
+- [x] Develop the custom SPI OLED driver and 1024-byte UI pipeline.
+- [x] Implement the Alpha/Numeric text-entry UI with joystick navigation.
+- [x] Create a custom variable-width font and 49-character transport alphabet.
+- [x] Unify both roles into one firmware source with two build targets.
+- [x] Add `HELLO`/`HELLO_ACK`, peer learning, heartbeat, timeout, and link-state LED.
+- [x] Add non-blocking transmit and exact-length control-token parsing.
+- [ ] Pass the hardware acceptance matrix: T2–T12 in the audit.
+- [ ] Add message IDs, sequence numbers, CRC/framing, duplicate detection.
+- [ ] Add Speck encryption and key exchange.
+- [ ] Implement MAC-layer StegoFrameOrder (the current SFO is application-layer).
+- [ ] Package into an enclosure and run from a battery.
+- [ ] [Undecided/Optional] Antenna trace modification for range testing; this voids certification and is bench-only.
+
+## Security and scope
+
+This repository is a learning prototype. It currently sends plaintext UDP over a private Wi-Fi network with a development password. Do not use it for sensitive traffic. The audit deliberately gates encryption and steganography work behind hardware verification of the handshake and transport, because adding crypto to an unreliable link would hide two classes of bugs at once.
