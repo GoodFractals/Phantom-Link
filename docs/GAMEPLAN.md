@@ -234,6 +234,7 @@ Exit gate: measured numbers exist, and the app provably does not depend on SFO.
 | 4.4 | Add error counters and a `STATUS` serial dump | One command prints link, seq window, crypto errors, SFO stats |
 | 4.5 | 24-hour soak with a message every 5 minutes | Zero resets, zero wedged sends, bounded memory |
 | 4.6 | Brownout/reset behaviour | Pulling power mid-TX leaves both sides recoverable |
+| 4.7 | Persist counters across power cycles in a flash sector | An untethered run can be audited on the next USB connection |
 
 Exit gate: the link survives a day of abuse without human intervention.
 
@@ -256,6 +257,13 @@ Why no sense hardware: a power bank's output is a regulated 5 V rail. A divider 
 Exit gate: both units run a full session untethered, and the measured runtime is written down.
 
 **Auto-cutoff is the one real risk.** Many packs shut off below ~50–100 mA. Pico 2 W plus OLED plus an active radio usually stays above that, but check it in 5.3. If a pack cuts out, keep the radio out of power save (already the case) and log the pack model so the pair can be swapped.
+
+**Untethered observability.** A power bank is not a USB host, so `stdio_usb` never enumerates and there is no serial log while running from the pack. Two cheap answers, in order of preference:
+
+1. Persist counters and a small event ring in a flash sector (step 4.7) and dump them on the next USB connection. No extra hardware.
+2. Add a 3-wire UART header on GP0/GP1 for a USB-UART adapter when a live log is needed. Costs about $5 and one header.
+
+Do not plan a soak test that depends on a serial console that will not exist.
 
 ### Phase 6 — UI finish (last, by design)
 
