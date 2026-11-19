@@ -18,6 +18,7 @@
 
 #include "pico/stdlib.h"
 #include "pico/time.h"
+#include "pico/rand.h"
 #include "pico/cyw43_arch.h"
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
@@ -34,6 +35,7 @@
 #include "boot_ui.h"
 #include "banner.h"
 #include "proto/proto_frame.h"
+#include "proto/proto_session.h"
 
 #ifndef IS_AP
 #define IS_AP 1
@@ -73,6 +75,7 @@ static const bool is_ap = (IS_AP != 0);
 #define JOY_HIGH 3000
 #define BUTTON_DEBOUNCE_MS 20
 #define MAX_TEXT_CHARS 21
+#define SESSION_STATS_MS 30000
 
 // --- Base-6 transport alphabet ------------------------------------------------
 // 49 codes: 48 drawable font glyphs plus space. Space is code 0.
@@ -155,6 +158,14 @@ static uint32_t rx_bad_frames = 0;
 static uint32_t rx_unknown_type = 0;
 static uint32_t rx_bad_payload = 0;
 
+// --- Session and replay state --------------------------------------------------
+static proto_session_t session;
+static uint32_t expected_rx_seq = 0;
+static uint32_t rx_gap = 0;
+static uint32_t rx_out_of_order = 0;
+static bool rx_message_dirty = false;
+static uint32_t last_session_stats_ms = 0;
+
 // --- Transmit state machine ---------------------------------------------------
 typedef enum { TX_IDLE = 0, TX_DATA, TX_END } tx_phase_t;
 
@@ -208,13 +219,16 @@ static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
 
     if (!upcb || !dst) return ERR_VAL;
 
+    if (!proto_session_active(&session) && type != PROTO_TYPE_HELLO) {
+        printf("TX no session for %s\n", frame_type_name(type));
+        return ERR_VAL;
+    }
+
     frame.version = (uint8_t)PROTO_VERSION;
     frame.type = type;
     frame.flags = flags;
-    // Session identity and sequencing arrive in ticket 05. Until then every
-    // frame carries zero, which is still a valid frame on the wire.
-    frame.session_id = 0;
-    frame.seq = 0;
+    frame.session_id = session.session_id;
+    frame.seq = proto_session_next_seq(&session);
     frame.ack = 0;
     frame.payload_len = payload_len;
     frame.payload = payload;
@@ -317,6 +331,7 @@ static void set_link_down(const char *why) {
     sym_count = 0;
     rx_index = 0;
     rx_buffer[0] = '\0';
+    rx_message_dirty = false;
     ui_active = true;
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
 
@@ -382,9 +397,77 @@ static void handle_symbol(int id) {
     reset_rx_accumulator();
 }
 
+static void drop_rx_message(const char *why) {
+    if (rx_index > 0 || sym_count > 0) {
+        printf("RX partial message discarded: %s\n", why);
+    }
+    rx_index = 0;
+    rx_buffer[0] = '\0';
+    reset_rx_accumulator();
+    last_symbol_ms = 0;
+}
+
+static void adopt_session(uint32_t id, const char *why) {
+    uint32_t old = session.session_id;
+
+    proto_session_init(&session, id);
+    expected_rx_seq = 0;
+    rx_message_dirty = false;
+    drop_rx_message("session reset");
+
+    printf("SESSION %s id=0x%08x old=0x%08x\n", why, (unsigned)id,
+           (unsigned)old);
+}
+
+static void begin_handshake(void) {
+    uint32_t id = get_rand_32();
+    if (id == 0) id = 1; /* keep zero as the "no session" sentinel */
+    adopt_session(id, "new");
+}
+
 static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
                          u16_t port) {
     note_peer(addr, port);
+
+    /* HELLO may introduce a new session. Every other frame must match the
+     * session already in place; the window check enforces that below. */
+    if (frame->type == PROTO_TYPE_HELLO &&
+        frame->session_id != session.session_id) {
+        adopt_session(frame->session_id, "adopted");
+    }
+
+    if (!proto_session_active(&session) && frame->type != PROTO_TYPE_HELLO) {
+        rx_bad_frames++;
+        printf("RX %s before a session; dropped\n",
+               frame_type_name(frame->type));
+        return;
+    }
+
+    proto_rx_result_t verdict =
+        proto_session_accept(&session, frame->session_id, frame->seq);
+    if (verdict != PROTO_RX_ACCEPTED) {
+        printf("RX %s type=%s seq=%u id=0x%08x "
+               "(accepted=%u duplicate=%u stale=%u wrong=%u)\n",
+               proto_rx_result_str(verdict), frame_type_name(frame->type),
+               (unsigned)frame->seq, (unsigned)frame->session_id,
+               (unsigned)session.accepted, (unsigned)session.duplicates,
+               (unsigned)session.stale, (unsigned)session.wrong_session);
+        return;
+    }
+
+    bool in_order = (frame->seq == expected_rx_seq);
+    if (in_order) {
+        expected_rx_seq++;
+    } else if (frame->seq > expected_rx_seq) {
+        rx_gap++;
+        printf("RX sequence gap: expected=%u got=%u\n",
+               (unsigned)expected_rx_seq, (unsigned)frame->seq);
+        expected_rx_seq = frame->seq + 1;
+    } else {
+        rx_out_of_order++;
+        printf("RX late frame: expected=%u got=%u\n",
+               (unsigned)expected_rx_seq, (unsigned)frame->seq);
+    }
 
     printf("RX type=%s seq=%u len=%u\n", frame_type_name(frame->type),
            (unsigned)frame->seq, (unsigned)frame->payload_len);
@@ -418,6 +501,29 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
 
     case PROTO_TYPE_DATA:
         if (link_state != LINK_UP) break;
+
+        if (!in_order) {
+            if (!rx_message_dirty) {
+                rx_message_dirty = true;
+                printf("RX message invalidated: out-of-order symbol\n");
+                drop_rx_message("out-of-order");
+            }
+            if (frame->payload_len == 0 &&
+                (frame->flags & PROTO_FLAG_FINAL)) {
+                rx_message_dirty = false;
+            }
+            break;
+        }
+
+        if (rx_message_dirty) {
+            if (frame->payload_len == 0 &&
+                (frame->flags & PROTO_FLAG_FINAL)) {
+                rx_message_dirty = false;
+                printf("RX message dropped after gap\n");
+            }
+            break;
+        }
+
         if (frame->payload_len == 1 && frame->payload[0] < 6) {
             handle_symbol(frame->payload[0]);
         } else if (frame->payload_len == 0 &&
@@ -425,6 +531,8 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
             finish_rx_message();
         } else {
             rx_bad_payload++;
+            rx_message_dirty = true;
+            drop_rx_message("bad DATA payload");
             printf("RX DATA rejected: len=%u flags=0x%02x\n",
                    (unsigned)frame->payload_len, (unsigned)frame->flags);
         }
@@ -986,6 +1094,7 @@ static void net_tick(uint32_t now) {
         if (!is_ap && wifi_ready &&
             (uint32_t)(now - last_hello_ms) >= HELLO_INTERVAL_MS) {
             last_hello_ms = now;
+            begin_handshake();
             send_control_frame(PROTO_TYPE_HELLO);
         }
         return;
@@ -1068,6 +1177,19 @@ static void halt_error(const char *label) {
     while (true) sleep_ms(1000);
 }
 
+static void session_stats_tick(uint32_t now) {
+    if (!proto_session_active(&session)) return;
+    if ((uint32_t)(now - last_session_stats_ms) < SESSION_STATS_MS) return;
+
+    last_session_stats_ms = now;
+    printf("SESSION stats: id=0x%08x tx=%u accepted=%u duplicate=%u "
+           "stale=%u wrong=%u gap=%u late=%u\n",
+           (unsigned)session.session_id, (unsigned)session.tx_seq,
+           (unsigned)session.accepted, (unsigned)session.duplicates,
+           (unsigned)session.stale, (unsigned)session.wrong_session,
+           (unsigned)rx_gap, (unsigned)rx_out_of_order);
+}
+
 int main(void) {
     stdio_init_all();
     sleep_ms(1500); // give the USB CDC monitor time to attach
@@ -1104,6 +1226,7 @@ int main(void) {
         net_tick(now);
         tx_tick(now);
         hud_tick(now);
+        session_stats_tick(now);
 
         if ((int32_t)(now - next_draw_ms) >= 0) {
             drawMainUI();

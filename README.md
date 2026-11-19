@@ -12,6 +12,7 @@ This is a handshake-first proof of concept. The link is **plaintext and unauthen
 - Full 49-character transport alphabet: 48 drawable glyphs plus space.
 - 3-digit Base-6 character encoding, three symbols per character, 80 ms per symbol.
 - Typed frames on the wire: 18-byte header, 0–64 byte payload, 8-byte auth field carrying a CRC32. `HELLO`, `HELLO_ACK`, `PING`, `PONG`, and `DATA` use their assigned type codes; `DATA` with `FINAL` ends a message.
+- Session layer: each handshake gets an RP2350 hardware-random session ID, each direction has its own sequence starting at 0, and a 32-bit sliding replay window drops duplicates and stale frames before the app sees them.
 - Peer address learning from the received UDP packet; no hardcoded STA reply address.
 - Static STA address `192.168.4.2/24` on the AP's subnet, because the SDK AP build has no DHCP server; link-status transitions are logged.
 - 1 s heartbeat, 3 s link timeout, `LINK UP` / `LINK LOST` serial logs, and link-state LED.
@@ -19,16 +20,16 @@ This is a handshake-first proof of concept. The link is **plaintext and unauthen
 - Boot splash from `boot_ui.h`, restored UI after boot, and draft/response text on separate rows.
 - Runtime status HUD on the numeric page: four-bar RSSI on the STA and a filled/hollow link bullet beside `LINK`. The battery cell is reserved but has no sensor yet.
 - Two build targets from one `main.c`: `phantom_link_ap` (`IS_AP=1`) and `phantom_link_sta` (`IS_AP=0`). `IS_AP` selects only the Wi-Fi role; the OLED/input path is unconditional in both.
-- Host validation: font table, all 49 codec values, a 21-character round-trip, `V` reachability, the corrected numeric hitboxes, and the unconditional UI/input path pass. The frame codec is covered by `ctest`: every payload length, every truncated prefix, 100k fuzz buffers, and per-bit tamper rejection.
+- Host validation: font table, all 49 codec values, a 21-character round-trip, `V` reachability, the corrected numeric hitboxes, and the unconditional UI/input path pass. `ctest` covers the frame codec, the replay window, a replayed-datagram harness, and a two-endpoint handshake simulation.
 
 **Hardware status**
 - Both UF2s build warning-free with Pico SDK 2.3.1 on native Windows, with `-Wall -Wextra -Werror`.
-- `firmware/build/phantom_link_ap.uf2` (672,768 bytes, SHA256 `313FC15D00D44A8C96B9513CF3C1309F286F6DBCF0AF046217684AE4FDDE55FD`) and `firmware/build/phantom_link_sta.uf2` (678,912 bytes, SHA256 `A2F61C9057AEE731616603545A7F6F4E92B6C8BE49D4DD8AFE97C3888E0F8A37`) are the current framed builds.
+- `firmware/build/phantom_link_ap.uf2` (675,840 bytes, SHA256 `B5D60EFC9111F077670AE52486457A6DE0091E1FFC50416943773CEEEC686C31`) and `firmware/build/phantom_link_sta.uf2` (682,496 bytes, SHA256 `046336CF8AFDD8212D611BC2B42E96FD77017C243F8FB5AC70E4284AB5D05CE1`) are the current framed builds.
 - **No board was connected during the build session.** The framed build still needs the T2–T12 matrix, including handshake and bidirectional messaging, on both boards. See `docs/REGRESSION.md` and the audit matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
 
 **Not implemented yet**
-- Encryption (Speck128/128 CTR + CMAC is planned), key exchange, authentication, replay protection.
-- Session IDs, sequence numbers, duplicate detection, ACK, retransmission.
+- Encryption (Speck128/128 CTR + CMAC is planned), key exchange, authentication, replay authentication (the window is not a MAC).
+- ACK, whole-message retransmission, clean `BYE` teardown, transmit queue.
 - MAC-layer StegoFrameOrder; the current SFO is an application-layer packet-name PoC.
 - Battery monitoring (power-bank LEDs are the gauge), enclosure, range/power measurements, antenna modification.
 
@@ -65,8 +66,8 @@ Every UDP datagram is one binary frame. The layout is fixed so Phase 2 can repla
 | 3 | 1 | type |
 | 4 | 1 | flags |
 | 5 | 1 | payload length (0–64) |
-| 6 | 4 | session ID (zero until ticket 05) |
-| 10 | 4 | sequence (zero until ticket 05) |
+| 6 | 4 | session ID (hardware-random per handshake) |
+| 10 | 4 | sequence (per direction, starts at 0) |
 | 14 | 4 | ACK (zero until ticket 06) |
 | 18 | n | payload |
 | 18+n | 8 | auth field: CRC32 then four reserved zero bytes |
@@ -81,13 +82,15 @@ Every UDP datagram is one binary frame. The layout is fixed so Phase 2 can repla
 
 `ACK`, `BYE`, `SFO`, and `ERROR` have assigned codes but no behaviour yet. A frame with an unknown type is dropped and counted. A structure or CRC failure is logged with its status and counted separately.
 
+A session starts with `HELLO`, which carries a session ID drawn from the RP2350 hardware RNG. Both directions start their own sequence at 0. The receiver keeps a 32-bit sliding bitmap: a sequence at or below `max-32` is stale, and one whose bit is already set is a duplicate; both are counted and dropped. If the sequence jumps, the receiver invalidates the in-progress message and discards symbols until the next `FINAL` rather than surfacing garbled text. Until ticket 06 adds ACK and retransmit, a lost symbol therefore loses the whole message instead of corrupting it.
+
 Data symbols are the Base-6 digits 0–5, sent one per `DATA` frame. A character is `d0*36 + d1*6 + d2` over the alphabet:
 
 ```text
 " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789=+-.,?!()[]\""
 ```
 
-CRC32 covers the header and payload. It catches corruption, not an attacker: there is no encryption, authentication, or sequence check yet. A lost symbol can still desynchronize a message; the receiver resets the three-symbol accumulator after a 500 ms gap and drops a partial final glyph at `FINAL`.
+CRC32 covers the header and payload. It catches corruption, not an attacker: there is no encryption or authentication yet, and the replay window is not a MAC. A lost symbol can still desynchronize a message; the receiver resets the three-symbol accumulator after a 500 ms gap and drops a partial final glyph at `FINAL`.
 
 ## Hardware
 
@@ -144,19 +147,20 @@ For the PoC, **Barebones = AP (host)** and **Jank Box 5000 = STA (client)**. Bot
 Open one serial monitor per board at 115200 8N1. Expected boot banners:
 
 ```text
-phantom-link v1 cc5116ad AP
+phantom-link v1 98a6247b AP
 AP active: 192.168.4.1
 UDP listening on 4444
 ```
 
 ```text
-phantom-link v1 cc5116ad STA
+phantom-link v1 98a6247b STA
 STA static IP: 192.168.4.2 (DHCP disabled)
 STA connecting to Phantom_Link...
 STA join continues in the main loop
 STA status: joining (1)
 STA status: up (3)
 STA IP: 192.168.4.2
+SESSION new id=0x6f3a91c2 old=0x00000000
 TX type=HELLO seq=0 len=0
 RX type=HELLO_ACK seq=0 len=0
 LINK UP (HELLO_ACK) peer=192.168.4.1:4444
@@ -184,7 +188,7 @@ firmware/            Unified AP/STA firmware and build definition
   numeric_ui.h       1024-byte Numeric page art
   boot_ui.h          1024-byte boot splash art
   banner.h           Version and build-hash boot banner
-  proto/             Frame spec, encode/decode, CRC32 (no SDK dependency)
+  proto/             Frame spec, codec/CRC32, session window (no SDK dependency)
   host/              Host CMake project and ctest suites for protocol code
   CMakeLists.txt     phantom_link_ap + phantom_link_sta targets
   tests/             Host-side font/codec/UI/role validation (no SDK needed)
@@ -245,8 +249,9 @@ The pre-audit RX tree is retained for rollback. The unified firmware is the acti
 - [x] Make OLED/input initialization unconditional; `IS_AP` selects only the Wi-Fi role.
 - [x] Add `HELLO`/`HELLO_ACK`, peer learning, heartbeat, timeout, and link-state LED.
 - [x] Add non-blocking transmit and typed frames with CRC32.
+- [x] Add hardware-random session IDs, per-direction sequence, and a replay window.
 - [ ] Pass the hardware acceptance matrix: T2–T12 in the audit.
-- [ ] Add session IDs, sequence numbers, duplicate detection, ACK, and retransmission.
+- [ ] Add ACK, whole-message retransmission, and clean teardown.
 - [ ] Add Speck encryption and key exchange.
 - [ ] Implement MAC-layer StegoFrameOrder (the current SFO is application-layer).
 - [ ] Run untethered from a zip-tied 2000 mAh power bank and measure runtime.
@@ -254,4 +259,4 @@ The pre-audit RX tree is retained for rollback. The unified firmware is the acti
 
 ## Security and scope
 
-This repository is a learning prototype. It currently sends plaintext UDP over a private Wi-Fi network with a development password. Do not use it for sensitive traffic. The audit deliberately gates encryption and steganography work behind hardware verification of the handshake and transport, because adding crypto to an unreliable link would hide two classes of bugs at once.
+This repository is a learning prototype. It sends plaintext UDP over a private Wi-Fi network with a development password. CRC32 and the replay window catch corruption and repeats; neither is authentication. Do not use it for sensitive traffic. The audit deliberately gates encryption and steganography work behind hardware verification of the handshake and transport, because adding crypto to an unreliable link would hide two classes of bugs at once.

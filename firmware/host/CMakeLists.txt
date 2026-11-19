@@ -20,7 +20,10 @@ target_include_directories(test_spec PRIVATE "${PROTO_DIR}")
 target_compile_options(test_spec PRIVATE ${WARNINGS})
 add_test(NAME spec COMMAND test_spec)
 
-add_library(phantom_proto STATIC "${PROTO_DIR}/proto_frame.c")
+add_library(phantom_proto STATIC
+    "${PROTO_DIR}/proto_frame.c"
+    "${PROTO_DIR}/proto_session.c"
+)
 target_include_directories(phantom_proto PUBLIC "${PROTO_DIR}")
 target_compile_options(phantom_proto PRIVATE ${WARNINGS})
 
@@ -28,6 +31,21 @@ add_executable(test_frame tests/test_frame.c)
 target_link_libraries(test_frame PRIVATE phantom_proto)
 target_compile_options(test_frame PRIVATE ${WARNINGS})
 add_test(NAME frame COMMAND test_frame)
+
+add_executable(test_session tests/test_session.c)
+target_link_libraries(test_session PRIVATE phantom_proto)
+target_compile_options(test_session PRIVATE ${WARNINGS})
+add_test(NAME session COMMAND test_session)
+
+add_executable(test_wire tests/test_wire.c)
+target_link_libraries(test_wire PRIVATE phantom_proto)
+target_compile_options(test_wire PRIVATE ${WARNINGS})
+add_test(NAME wire COMMAND test_wire)
+
+add_executable(test_handshake tests/test_handshake.c)
+target_link_libraries(test_handshake PRIVATE phantom_proto)
+target_compile_options(test_handshake PRIVATE ${WARNINGS})
+add_test(NAME handshake COMMAND test_handshake)
 
 add_executable(test_banner tests/test_banner.c)
 target_include_directories(test_banner PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")

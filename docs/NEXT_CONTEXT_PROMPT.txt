@@ -40,24 +40,27 @@ CURRENT STATE
   header, CRC32 auth field, HELLO/HELLO_ACK/PING/PONG/DATA, FINAL ends a
   message. Peer learning, 1 s heartbeat, 3 s timeout, non-blocking TX,
   boot splash.
+- Session layer: hardware-random session ID per handshake (get_rand_32),
+  per-direction sequence from 0, 32-bit sliding replay window, duplicate and
+  stale counters, sequence-gap message invalidation, 30 s SESSION stats line.
 - The token build reached LINK UP and sent typed messages on hardware. The
-  framed build (tickets 03-04) has not been flashed; the full T2-T12 matrix
-  and the HUD build still need a hardware run.
+  framed/session build (tickets 03-05) has not been flashed; the full T2-T12
+  matrix and the HUD build still need a hardware run.
 - Last verified build: Pico SDK 2.3.1, zero warnings under -Werror.
-  main.c build hash 6d8d2bcb
-  phantom_link_ap.uf2 672,768 bytes
-  SHA256 313FC15D00D44A8C96B9513CF3C1309F286F6DBCF0AF046217684AE4FDDE55FD
-  phantom_link_sta.uf2 678,912 bytes
-  SHA256 A2F61C9057AEE731616603545A7F6F4E92B6C8BE49D4DD8AFE97C3888E0F8A37
+  main.c build hash 98a6247b
+  phantom_link_ap.uf2 675,840 bytes
+  SHA256 B5D60EFC9111F077670AE52486457A6DE0091E1FFC50416943773CEEEC686C31
+  phantom_link_sta.uf2 682,496 bytes
+  SHA256 046336CF8AFDD8212D611BC2B42E96FD77017C243F8FB5AC70E4284AB5D05CE1
   Rebuild rather than trusting these hashes; they move with every commit.
 - Host validation: python firmware/tests/validate_assets.py
   Expected final line: HOST VALIDATION: PASS.
   Protocol tests: cmake -S firmware/host -B firmware/host/build -G Ninja
   then cmake --build firmware/host/build and
   ctest --test-dir firmware/host/build --output-on-failure.
-- Not implemented: session IDs, sequence numbers, duplicate suppression,
-  ACK/retransmit, encryption, authentication, replay protection, SFO,
-  watchdog, persistence. These are the backlog.
+  6 tests: spec, frame, session, wire, handshake, banner.
+- Not implemented: ACK/retransmit, BYE teardown, TX queue, encryption,
+  authentication, replay authentication, SFO, watchdog, persistence.
 - Phantom_Link_rx/ and Phantom_Link_tx/ are rollback/reference only.
 
 DECISIONS (see docs/adr/)
@@ -72,8 +75,9 @@ NEXT TASK
 Work the ticket frontier. Read .scratch/phantom-link-v1/issues/ and pick the
 lowest-numbered open ticket whose blockers are all done.
 - 01, 02, and 03 are done and committed.
-- 04 is code-complete; its two hardware criteria close with ticket 09.
-- 05 (session ID, sequence, duplicates) is next and needs no hardware.
+- 04 is code-complete; its hardware criteria close with ticket 09.
+- 05 is code-complete; the reboot-ID observation joins ticket 09.
+- 06 (ACK and whole-message retransmit) is next and needs no hardware.
 - 22 (untethered power rig) is unblocked but needs hands on hardware.
 - Do not start a later ticket to "get ahead". The gates exist because crypto
   debugged on unstable framing is how projects die.
