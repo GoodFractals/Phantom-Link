@@ -35,6 +35,7 @@
 #include "boot_ui.h"
 #include "banner.h"
 #include "proto/proto_frame.h"
+#include "proto/proto_msg.h"
 #include "proto/proto_session.h"
 
 #ifndef IS_AP
@@ -68,7 +69,8 @@ static const bool is_ap = (IS_AP != 0);
 #define HEARTBEAT_MS 1000
 #define LINK_TIMEOUT_MS 3000
 #define SYMBOL_INTERVAL_MS 80
-#define SYMBOL_GAP_MS 500
+#define ACK_TIMEOUT_MS 1200
+#define TX_NOTICE_MS 5000
 #define TAP_TIMEOUT_MS 800
 #define JOY_REPEAT_MS 220
 #define JOY_LOW 1000
@@ -125,14 +127,10 @@ static uint32_t last_tap_ms = 0;
 
 // --- Received message ---------------------------------------------------------
 // Kept separate from current_message so an inbound packet cannot overwrite a
-// draft while the user is typing.
+// draft while the user is typing. The assembler holds at most 21 characters.
 static char rx_message[64] = "";
 static int rx_message_len = 0;
-static char rx_buffer[64] = "";
-static int rx_index = 0;
-static int sym_acc = 0;
-static int sym_count = 0;
-static uint32_t last_symbol_ms = 0;
+static proto_msg_rx_t rx_msg;
 
 // --- Link state ---------------------------------------------------------------
 typedef enum { LINK_DOWN = 0, LINK_UP } link_state_t;
@@ -163,34 +161,33 @@ static proto_session_t session;
 static uint32_t expected_rx_seq = 0;
 static uint32_t rx_gap = 0;
 static uint32_t rx_out_of_order = 0;
-static bool rx_message_dirty = false;
 static uint32_t last_session_stats_ms = 0;
 
 // --- Transmit state machine ---------------------------------------------------
-typedef enum { TX_IDLE = 0, TX_DATA, TX_END } tx_phase_t;
-
-static tx_phase_t tx_phase = TX_IDLE;
-static char tx_buf[64];
-static int tx_len = 0;
-static int tx_pos = 0;
-static int tx_digit = 0;
+static proto_msg_tx_t tx_msg;
 static uint32_t tx_next_ms = 0;
-static uint8_t tx_msg_id = 0;
+static uint32_t tx_frames = 0;
+static char tx_notice[12] = "";
+static uint32_t tx_notice_until = 0;
 
 // --- Time and codec -----------------------------------------------------------
 static uint32_t now_ms(void) {
     return to_ms_since_boot(get_absolute_time());
 }
 
-static int code_from_glyph(char c) {
-    if (c == '\0') return -1;
-    const char *p = strchr(GLYPHS, c);
-    return p ? (int)(p - GLYPHS) : -1;
+static bool tx_active(void) {
+    return tx_msg.phase == PROTO_TX_SENDING ||
+           tx_msg.phase == PROTO_TX_WAITING;
 }
 
-static char glyph_from_code(int code) {
-    if (code < 0 || code >= (int)sizeof(GLYPHS) - 1) return '?';
-    return GLYPHS[code];
+// Frame payloads carry 16-bit message IDs in network byte order.
+static uint16_t read_u16(const uint8_t *p) {
+    return (uint16_t)(((uint16_t)p[0] << 8) | p[1]);
+}
+
+static void write_u16(uint8_t *p, uint16_t value) {
+    p[0] = (uint8_t)(value >> 8);
+    p[1] = (uint8_t)(value & 0xFF);
 }
 
 // --- UDP send / peer learning -------------------------------------------------
@@ -211,7 +208,7 @@ static const char *frame_type_name(uint8_t type) {
 
 static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
                            uint8_t flags, const uint8_t *payload,
-                           uint8_t payload_len) {
+                           uint8_t payload_len, uint32_t ack) {
     uint8_t buf[PROTO_MAX_FRAME_LEN];
     proto_frame_view_t frame;
     size_t len = 0;
@@ -229,7 +226,7 @@ static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
     frame.flags = flags;
     frame.session_id = session.session_id;
     frame.seq = proto_session_next_seq(&session);
-    frame.ack = 0;
+    frame.ack = ack;
     frame.payload_len = payload_len;
     frame.payload = payload;
 
@@ -264,12 +261,14 @@ static bool send_control_frame(uint8_t type) {
     if (!upcb) return false;
 
     if (peer_valid) {
-        return send_frame_to(&peer_ip, peer_port, type, 0, NULL, 0) == ERR_OK;
+        return send_frame_to(&peer_ip, peer_port, type, 0, NULL, 0, 0) ==
+               ERR_OK;
     }
 
     if (!is_ap) {
         // The STA knows the AP's default address before HELLO_ACK arrives.
-        return send_frame_to(&ap_addr, UDP_PORT, type, 0, NULL, 0) == ERR_OK;
+        return send_frame_to(&ap_addr, UDP_PORT, type, 0, NULL, 0, 0) ==
+               ERR_OK;
     }
 
     printf("no peer yet; cannot send %s\n", frame_type_name(type));
@@ -280,15 +279,36 @@ static bool send_data_frame(const uint8_t *payload, uint8_t payload_len,
                             uint8_t flags) {
     if (peer_valid) {
         return send_frame_to(&peer_ip, peer_port, PROTO_TYPE_DATA, flags,
-                             payload, payload_len) == ERR_OK;
+                             payload, payload_len, 0) == ERR_OK;
     }
 
     if (!is_ap) {
         return send_frame_to(&ap_addr, UDP_PORT, PROTO_TYPE_DATA, flags,
-                             payload, payload_len) == ERR_OK;
+                             payload, payload_len, 0) == ERR_OK;
     }
 
     printf("no peer yet; cannot send DATA\n");
+    return false;
+}
+
+static bool send_ack_frame(uint16_t msg_id, uint8_t next_pos) {
+    uint8_t payload[PROTO_MSG_ACK_PAYLOAD];
+    uint32_t ack = (expected_rx_seq > 0) ? expected_rx_seq - 1 : 0;
+
+    write_u16(payload, msg_id);
+    payload[2] = next_pos;
+
+    if (peer_valid) {
+        return send_frame_to(&peer_ip, peer_port, PROTO_TYPE_ACK, 0, payload,
+                             PROTO_MSG_ACK_PAYLOAD, ack) == ERR_OK;
+    }
+
+    if (!is_ap) {
+        return send_frame_to(&ap_addr, UDP_PORT, PROTO_TYPE_ACK, 0, payload,
+                             PROTO_MSG_ACK_PAYLOAD, ack) == ERR_OK;
+    }
+
+    printf("no peer yet; cannot send ACK\n");
     return false;
 }
 
@@ -327,18 +347,14 @@ static void set_link_down(const char *why) {
     link_state = LINK_DOWN;
     peer_valid = false;
     manual_ping = false;
-    sym_acc = 0;
-    sym_count = 0;
-    rx_index = 0;
-    rx_buffer[0] = '\0';
-    rx_message_dirty = false;
+    proto_msg_rx_reset(&rx_msg);
     ui_active = true;
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
 
-    if (tx_phase != TX_IDLE) {
-        tx_phase = TX_IDLE;
-        tx_pos = 0;
-        tx_digit = 0;
+    if (tx_active()) {
+        proto_msg_tx_abort(&tx_msg);
+        tx_frames = 0;
+        tx_next_ms = 0;
         printf("TX aborted: no link\n");
     }
 
@@ -346,74 +362,18 @@ static void set_link_down(const char *why) {
 }
 
 // --- Receive path -------------------------------------------------------------
-static void reset_rx_accumulator(void) {
-    sym_acc = 0;
-    sym_count = 0;
-}
-
-static void finish_rx_message(void) {
-    if (sym_count != 0) {
-        printf("RX END with partial glyph (%d symbol%s); dropping it\n",
-               sym_count, sym_count == 1 ? "" : "s");
-        reset_rx_accumulator();
-    }
-
-    if (rx_index > 0) {
-        rx_buffer[rx_index] = '\0';
-        memcpy(rx_message, rx_buffer, (size_t)rx_index + 1);
-        rx_message_len = rx_index;
-
-        if (strcmp(rx_message, "SOS") == 0) {
-            printf("\n!!! SOS SIGNAL RECEIVED !!!\n");
-        } else {
-            printf("\nSecret Msg: %s\n", rx_message);
-        }
-    } else {
-        printf("RX END with no data; ignored\n");
-    }
-
-    rx_index = 0;
-    rx_buffer[0] = '\0';
-    reset_rx_accumulator();
-}
-
-static void handle_symbol(int id) {
-    uint32_t now = now_ms();
-
-    if ((uint32_t)(now - last_symbol_ms) > SYMBOL_GAP_MS) {
-        if (sym_count > 0) printf("RX gap: Base-6 accumulator reset\n");
-        reset_rx_accumulator();
-    }
-    last_symbol_ms = now;
-
-    sym_acc = sym_acc * 6 + id;
-    if (++sym_count < 3) return;
-
-    char c = glyph_from_code(sym_acc);
-    if (rx_index < (int)sizeof(rx_buffer) - 1) {
-        rx_buffer[rx_index++] = c;
-        rx_buffer[rx_index] = '\0';
-    }
-    reset_rx_accumulator();
-}
-
-static void drop_rx_message(const char *why) {
-    if (rx_index > 0 || sym_count > 0) {
-        printf("RX partial message discarded: %s\n", why);
-    }
-    rx_index = 0;
-    rx_buffer[0] = '\0';
-    reset_rx_accumulator();
-    last_symbol_ms = 0;
-}
-
 static void adopt_session(uint32_t id, const char *why) {
     uint32_t old = session.session_id;
 
     proto_session_init(&session, id);
     expected_rx_seq = 0;
-    rx_message_dirty = false;
-    drop_rx_message("session reset");
+    proto_msg_rx_reset(&rx_msg);
+
+    if (tx_active()) {
+        printf("TX aborted: session reset\n");
+        proto_msg_tx_abort(&tx_msg);
+        tx_frames = 0;
+    }
 
     printf("SESSION %s id=0x%08x old=0x%08x\n", why, (unsigned)id,
            (unsigned)old);
@@ -499,44 +459,85 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
         if (link_state != LINK_UP) set_link_up("PONG");
         break;
 
-    case PROTO_TYPE_DATA:
-        if (link_state != LINK_UP) break;
-
-        if (!in_order) {
-            if (!rx_message_dirty) {
-                rx_message_dirty = true;
-                printf("RX message invalidated: out-of-order symbol\n");
-                drop_rx_message("out-of-order");
-            }
-            if (frame->payload_len == 0 &&
-                (frame->flags & PROTO_FLAG_FINAL)) {
-                rx_message_dirty = false;
-            }
-            break;
-        }
-
-        if (rx_message_dirty) {
-            if (frame->payload_len == 0 &&
-                (frame->flags & PROTO_FLAG_FINAL)) {
-                rx_message_dirty = false;
-                printf("RX message dropped after gap\n");
-            }
-            break;
-        }
-
-        if (frame->payload_len == 1 && frame->payload[0] < 6) {
-            handle_symbol(frame->payload[0]);
-        } else if (frame->payload_len == 0 &&
-                   (frame->flags & PROTO_FLAG_FINAL)) {
-            finish_rx_message();
-        } else {
+    case PROTO_TYPE_ACK: {
+        if (frame->payload_len != PROTO_MSG_ACK_PAYLOAD) {
             rx_bad_payload++;
-            rx_message_dirty = true;
-            drop_rx_message("bad DATA payload");
-            printf("RX DATA rejected: len=%u flags=0x%02x\n",
-                   (unsigned)frame->payload_len, (unsigned)frame->flags);
+            printf("RX ACK bad len=%u\n", (unsigned)frame->payload_len);
+            break;
+        }
+
+        uint16_t acked_id = read_u16(frame->payload);
+        uint8_t next_pos = frame->payload[2];
+        bool delivered = proto_msg_tx_ack(&tx_msg, acked_id, next_pos);
+
+        if (delivered) {
+            printf("TX delivered msg=%u attempts=%u retransmits=%u\n",
+                   (unsigned)acked_id, (unsigned)tx_msg.attempt,
+                   (unsigned)tx_msg.retransmits);
+            ui_active = true;
+        } else if (tx_active() && acked_id == tx_msg.msg_id) {
+            printf("TX ACK msg=%u next=%u resume=%u\n", (unsigned)acked_id,
+                   (unsigned)next_pos, (unsigned)tx_msg.resume_pos);
         }
         break;
+    }
+
+    case PROTO_TYPE_DATA: {
+        if (link_state != LINK_UP) break;
+
+        bool final = (frame->flags & PROTO_FLAG_FINAL) != 0;
+        uint8_t need = final ? PROTO_MSG_FINAL_PAYLOAD
+                             : PROTO_MSG_SYMBOL_PAYLOAD;
+        if (frame->payload_len != need) {
+            rx_bad_payload++;
+            printf("RX DATA bad len=%u flags=0x%02x\n",
+                   (unsigned)frame->payload_len, (unsigned)frame->flags);
+            break;
+        }
+
+        uint16_t rx_id = read_u16(frame->payload);
+        uint8_t pos = frame->payload[2];
+        uint8_t symbol = final ? 0 : frame->payload[3];
+
+        proto_msg_event_t event =
+            proto_msg_rx_frame(&rx_msg, rx_id, pos, symbol, final);
+
+        if (event == PROTO_MSG_EV_COMPLETE) {
+            uint8_t len = proto_msg_rx_len(&rx_msg);
+            memcpy(rx_message, proto_msg_rx_text(&rx_msg), (size_t)len + 1);
+            rx_message_len = len;
+
+            if (strcmp(rx_message, "SOS") == 0) {
+                printf("\n!!! SOS SIGNAL RECEIVED !!!\n");
+            } else {
+                printf("\nSecret Msg: %s\n", rx_message);
+            }
+            printf("RX msg=%u complete len=%u\n", (unsigned)rx_id,
+                   (unsigned)len);
+            ui_active = true;
+        } else if (event == PROTO_MSG_EV_DUPLICATE) {
+            printf("RX msg=%u duplicate final; re-ACK\n", (unsigned)rx_id);
+        } else if (event == PROTO_MSG_EV_BAD) {
+            rx_bad_payload++;
+            printf("RX DATA bad msg=%u pos=%u sym=%u\n", (unsigned)rx_id,
+                   (unsigned)pos, (unsigned)symbol);
+        } else if (event == PROTO_MSG_EV_IGNORED && pos > 0) {
+            printf("RX DATA gap msg=%u pos=%u have=%u\n", (unsigned)rx_id,
+                   (unsigned)pos, (unsigned)rx_msg.symbol_count);
+        }
+
+        if ((frame->flags & PROTO_FLAG_ACK_REQ) &&
+            event != PROTO_MSG_EV_BAD) {
+            uint8_t next_pos = proto_msg_rx_next_pos(&rx_msg, rx_id);
+            if (send_ack_frame(rx_id, next_pos)) {
+                printf("TX ACK msg=%u next=%u\n", (unsigned)rx_id,
+                       (unsigned)next_pos);
+            } else {
+                printf("ACK send failed msg=%u\n", (unsigned)rx_id);
+            }
+        }
+        break;
+    }
 
     default:
         printf("RX ignored type=%s (not handled yet)\n",
@@ -594,17 +595,17 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
 
 // --- Transmit path ------------------------------------------------------------
 static void abort_tx(const char *why) {
-    if (tx_phase != TX_IDLE) {
+    if (tx_active()) {
         printf("TX aborted: %s\n", why);
     }
-    tx_phase = TX_IDLE;
-    tx_pos = 0;
-    tx_digit = 0;
+    proto_msg_tx_abort(&tx_msg);
+    tx_frames = 0;
+    tx_next_ms = 0;
     ui_active = true;
 }
 
 static void start_send(void) {
-    if (tx_phase != TX_IDLE) {
+    if (tx_active()) {
         printf("TX busy\n");
         return;
     }
@@ -617,22 +618,36 @@ static void start_send(void) {
         return;
     }
 
-    memcpy(tx_buf, current_message, (size_t)msg_length + 1);
-    tx_len = msg_length;
-    tx_pos = 0;
-    tx_digit = 0;
-    tx_msg_id++;
-    tx_phase = TX_DATA;
+    if (!proto_msg_tx_begin(&tx_msg, current_message, (uint8_t)msg_length)) {
+        printf("TX begin failed\n");
+        return;
+    }
+
+    tx_frames = 0;
     tx_next_ms = now_ms();
+    tx_notice[0] = '\0';
     ui_active = false;
     active_group = -1;
     tap_count = 0;
 
-    printf("TX start msg=%u len=%d\n", (unsigned)tx_msg_id, tx_len);
+    printf("TX start msg=%u len=%u\n", (unsigned)tx_msg.msg_id,
+           (unsigned)tx_msg.len);
+}
+
+static void tx_failed(void) {
+    printf("TX FAILED msg=%u attempts=%u\n", (unsigned)tx_msg.msg_id,
+           (unsigned)tx_msg.attempt);
+
+    snprintf(tx_notice, sizeof tx_notice, "NO ACK");
+    tx_notice_until = now_ms() + TX_NOTICE_MS;
+
+    proto_msg_tx_abort(&tx_msg);
+    tx_frames = 0;
+    ui_active = true;
 }
 
 static void tx_tick(uint32_t now) {
-    if (tx_phase == TX_IDLE) return;
+    if (!tx_active()) return;
     if ((int32_t)(now - tx_next_ms) < 0) return;
 
     if (link_state != LINK_UP) {
@@ -640,34 +655,59 @@ static void tx_tick(uint32_t now) {
         return;
     }
 
-    if (tx_phase == TX_DATA) {
-        int code = code_from_glyph(tx_buf[tx_pos]);
-        if (code < 0) code = code_from_glyph('?');
+    if (tx_msg.phase == PROTO_TX_WAITING) {
+        if (!proto_msg_tx_timed_out(&tx_msg, now)) return;
 
-        int divisor = (tx_digit == 0) ? 36 : (tx_digit == 1) ? 6 : 1;
-        int symbol = (code / divisor) % 6;
-        uint8_t sym = (uint8_t)symbol;
-
-        if (!send_data_frame(&sym, 1, 0)) {
-            tx_next_ms = now + SYMBOL_INTERVAL_MS;
+        if (!proto_msg_tx_retry(&tx_msg)) {
+            tx_failed();
             return;
         }
 
-        printf("TX glyph '%c' sym=%d\n", tx_buf[tx_pos], symbol);
-        tx_next_ms = now + SYMBOL_INTERVAL_MS;
-        if (++tx_digit == 3) {
-            tx_digit = 0;
-            if (++tx_pos >= tx_len) tx_phase = TX_END;
-        }
-    } else if (tx_phase == TX_END) {
-        if (!send_data_frame(NULL, 0, PROTO_FLAG_FINAL)) {
-            tx_next_ms = now + SYMBOL_INTERVAL_MS;
-            return;
-        }
-        printf("TX END msg=%u\n", (unsigned)tx_msg_id);
-        tx_phase = TX_IDLE;
-        ui_active = true;
+        tx_frames = 0;
+        tx_next_ms = now;
+        printf("TX retry msg=%u attempt=%u from=%u\n",
+               (unsigned)tx_msg.msg_id, (unsigned)tx_msg.attempt,
+               (unsigned)tx_msg.pos);
+        return;
     }
+
+    if (tx_msg.pos < tx_msg.total_symbols) {
+        uint8_t payload[PROTO_MSG_SYMBOL_PAYLOAD];
+        write_u16(payload, tx_msg.msg_id);
+        payload[2] = tx_msg.pos;
+        payload[3] = proto_msg_tx_symbol(&tx_msg);
+
+        uint8_t flags = 0;
+        tx_frames++;
+        if ((tx_frames % 8u) == 0u) flags |= PROTO_FLAG_ACK_REQ;
+
+        if (!send_data_frame(payload, sizeof payload, flags)) {
+            tx_next_ms = now + SYMBOL_INTERVAL_MS;
+            return;
+        }
+
+        printf("TX glyph '%c' pos=%u sym=%u\n",
+               tx_msg.text[tx_msg.pos / 3u], (unsigned)tx_msg.pos,
+               (unsigned)payload[3]);
+        tx_msg.pos++;
+        tx_next_ms = now + SYMBOL_INTERVAL_MS;
+        return;
+    }
+
+    uint8_t payload[PROTO_MSG_FINAL_PAYLOAD];
+    write_u16(payload, tx_msg.msg_id);
+    payload[2] = tx_msg.total_symbols;
+
+    if (!send_data_frame(payload, sizeof payload,
+                         PROTO_FLAG_FINAL | PROTO_FLAG_ACK_REQ)) {
+        tx_next_ms = now + SYMBOL_INTERVAL_MS;
+        return;
+    }
+
+    printf("TX END msg=%u total=%u\n", (unsigned)tx_msg.msg_id,
+           (unsigned)tx_msg.total_symbols);
+    proto_msg_tx_final_sent(&tx_msg, now, ACK_TIMEOUT_MS);
+    tx_next_ms = tx_msg.deadline_ms;
 }
 
 // --- UI -----------------------------------------------------------------------
@@ -757,9 +797,17 @@ static void drawMainUI(void) {
         }
     }
 
+    bool notice = tx_notice[0] != '\0' &&
+                  (int32_t)(now_ms() - tx_notice_until) < 0;
     if (msg_length > 0) {
         draw_text_tail(0, current_message);
-        if (rx_message_len > 0) draw_text_tail(8, rx_message);
+        if (notice) {
+            draw_text_tail(8, tx_notice);
+        } else if (rx_message_len > 0) {
+            draw_text_tail(8, rx_message);
+        }
+    } else if (notice) {
+        draw_text_tail(0, tx_notice);
     } else if (rx_message_len > 0) {
         draw_text_tail(0, rx_message);
     }
@@ -798,7 +846,7 @@ static void reset_tap(void) {
 }
 
 static void append_char(char c) {
-    if (msg_length < (int)sizeof(current_message) - 1) {
+    if (msg_length < MAX_TEXT_CHARS) {
         current_message[msg_length++] = c;
         current_message[msg_length] = '\0';
     }
@@ -819,7 +867,7 @@ static void request_ping(void) {
 }
 
 static void load_and_send_sos(void) {
-    if (tx_phase != TX_IDLE) {
+    if (tx_active()) {
         printf("TX busy\n");
         return;
     }
@@ -913,7 +961,7 @@ static void handle_select_button(uint32_t now) {
 }
 
 static void handle_delete_button(void) {
-    if (tx_phase != TX_IDLE) {
+    if (tx_active()) {
         abort_tx("DELETE");
         return;
     }
@@ -1183,11 +1231,15 @@ static void session_stats_tick(uint32_t now) {
 
     last_session_stats_ms = now;
     printf("SESSION stats: id=0x%08x tx=%u accepted=%u duplicate=%u "
-           "stale=%u wrong=%u gap=%u late=%u\n",
+           "stale=%u wrong=%u gap=%u late=%u msg=%u msgdup=%u msgdrop=%u "
+           "retry=%u fail=%u\n",
            (unsigned)session.session_id, (unsigned)session.tx_seq,
            (unsigned)session.accepted, (unsigned)session.duplicates,
            (unsigned)session.stale, (unsigned)session.wrong_session,
-           (unsigned)rx_gap, (unsigned)rx_out_of_order);
+           (unsigned)rx_gap, (unsigned)rx_out_of_order,
+           (unsigned)rx_msg.completed, (unsigned)rx_msg.duplicates,
+           (unsigned)rx_msg.dropped, (unsigned)tx_msg.retransmits,
+           (unsigned)tx_msg.failed);
 }
 
 int main(void) {
@@ -1206,6 +1258,8 @@ int main(void) {
     // Both boards carry the same BOM. Bring up the full local UI and controls
     // before Wi-Fi so input works even while the STA is still joining.
     input_init();
+    proto_msg_rx_init(&rx_msg, GLYPHS, (uint8_t)(sizeof(GLYPHS) - 1));
+    proto_msg_tx_init(&tx_msg, GLYPHS, (uint8_t)(sizeof(GLYPHS) - 1));
     drawMainUI();
 
     IP_ADDR4(&ap_addr, 192, 168, 4, 1);

@@ -23,6 +23,7 @@ add_test(NAME spec COMMAND test_spec)
 add_library(phantom_proto STATIC
     "${PROTO_DIR}/proto_frame.c"
     "${PROTO_DIR}/proto_session.c"
+    "${PROTO_DIR}/proto_msg.c"
 )
 target_include_directories(phantom_proto PUBLIC "${PROTO_DIR}")
 target_compile_options(phantom_proto PRIVATE ${WARNINGS})
@@ -46,6 +47,16 @@ add_executable(test_handshake tests/test_handshake.c)
 target_link_libraries(test_handshake PRIVATE phantom_proto)
 target_compile_options(test_handshake PRIVATE ${WARNINGS})
 add_test(NAME handshake COMMAND test_handshake)
+
+add_executable(test_msg tests/test_msg.c)
+target_link_libraries(test_msg PRIVATE phantom_proto)
+target_compile_options(test_msg PRIVATE ${WARNINGS})
+add_test(NAME msg COMMAND test_msg)
+
+add_executable(test_reliable tests/test_reliable.c)
+target_link_libraries(test_reliable PRIVATE phantom_proto)
+target_compile_options(test_reliable PRIVATE ${WARNINGS})
+add_test(NAME reliable COMMAND test_reliable)
 
 add_executable(test_banner tests/test_banner.c)
 target_include_directories(test_banner PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")

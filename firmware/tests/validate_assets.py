@@ -159,12 +159,17 @@ def main() -> int:
     assert "TOK_HELLO" not in main_text
     assert "proto/proto_frame.c" in cmake_text
     assert "proto/proto_session.c" in cmake_text
+    assert "proto/proto_msg.c" in cmake_text
     assert "get_rand_32()" in main_text
     assert "proto_session_accept" in main_text
+    assert "proto_msg_rx_frame" in main_text
+    assert "proto_msg_tx_ack" in main_text
+    assert "send_ack_frame" in main_text
     assert "begin_handshake();" in main_text
     assert "session_id++" not in main_text
     assert "SESSION stats" in main_text
     assert "RTT timeout" in main_text
+    assert "PROTO_MSG_ACK_PAYLOAD" in main_text
     assert "phantom_link_ap" in cmake_text and "phantom_link_sta" in cmake_text
     assert "IS_AP=1" in cmake_text or "IS_AP=${is_ap}" in cmake_text
 
@@ -198,6 +203,7 @@ def main() -> int:
     print("hud: RSSI bars and link bullet drawn into the baked numeric cells")
     print("link: HELLO_ACK gated, RTT timeout present, both CMake targets defined")
     print("session: hardware RNG IDs, replay window, gap guard, stats line")
+    print("reliable: ACK, whole-message retransmit, lost-ACK recovery, bounded retries")
     print("wifi: STA static IP on the AP subnet; DHCP stopped")
 
     print("HOST VALIDATION: PASS")

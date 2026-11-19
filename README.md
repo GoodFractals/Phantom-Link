@@ -24,12 +24,13 @@ This is a handshake-first proof of concept. The link is **plaintext and unauthen
 
 **Hardware status**
 - Both UF2s build warning-free with Pico SDK 2.3.1 on native Windows, with `-Wall -Wextra -Werror`.
-- `firmware/build/phantom_link_ap.uf2` (675,840 bytes, SHA256 `B5D60EFC9111F077670AE52486457A6DE0091E1FFC50416943773CEEEC686C31`) and `firmware/build/phantom_link_sta.uf2` (682,496 bytes, SHA256 `046336CF8AFDD8212D611BC2B42E96FD77017C243F8FB5AC70E4284AB5D05CE1`) are the current framed builds.
+- `firmware/build/phantom_link_ap.uf2` (678,912 bytes, SHA256 `164A9E435075584C7A07D05BC60471B703B568647ADD41C3005B791750B08DE5`) and `firmware/build/phantom_link_sta.uf2` (685,056 bytes, SHA256 `0BCAD12924F865D5D1333CA03B8AC725E78D7599BDD381D5E46871E9B2C1D75A`) are the current framed builds.
 - **No board was connected during the build session.** The framed build still needs the T2–T12 matrix, including handshake and bidirectional messaging, on both boards. See `docs/REGRESSION.md` and the audit matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
 
 **Not implemented yet**
 - Encryption (Speck128/128 CTR + CMAC is planned), key exchange, authentication, replay authentication (the window is not a MAC).
-- ACK, whole-message retransmission, clean `BYE` teardown, transmit queue.
+- ACK, whole-message retransmission, duplicate suppression, and a 20-attempt bounded retry with a `NO ACK` UI notice.
+- Clean `BYE` teardown, transmit queue.
 - MAC-layer StegoFrameOrder; the current SFO is an application-layer packet-name PoC.
 - Battery monitoring (power-bank LEDs are the gauge), enclosure, range/power measurements, antenna modification.
 
@@ -147,13 +148,13 @@ For the PoC, **Barebones = AP (host)** and **Jank Box 5000 = STA (client)**. Bot
 Open one serial monitor per board at 115200 8N1. Expected boot banners:
 
 ```text
-phantom-link v1 98a6247b AP
+phantom-link v1 76acd4b8 AP
 AP active: 192.168.4.1
 UDP listening on 4444
 ```
 
 ```text
-phantom-link v1 98a6247b STA
+phantom-link v1 76acd4b8 STA
 STA static IP: 192.168.4.2 (DHCP disabled)
 STA connecting to Phantom_Link...
 STA join continues in the main loop

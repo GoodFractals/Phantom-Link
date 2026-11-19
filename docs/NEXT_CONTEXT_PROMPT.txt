@@ -47,11 +47,11 @@ CURRENT STATE
   framed/session build (tickets 03-05) has not been flashed; the full T2-T12
   matrix and the HUD build still need a hardware run.
 - Last verified build: Pico SDK 2.3.1, zero warnings under -Werror.
-  main.c build hash 98a6247b
-  phantom_link_ap.uf2 675,840 bytes
-  SHA256 B5D60EFC9111F077670AE52486457A6DE0091E1FFC50416943773CEEEC686C31
-  phantom_link_sta.uf2 682,496 bytes
-  SHA256 046336CF8AFDD8212D611BC2B42E96FD77017C243F8FB5AC70E4284AB5D05CE1
+  main.c build hash 76acd4b8
+  phantom_link_ap.uf2 678,912 bytes
+  SHA256 164A9E435075584C7A07D05BC60471B703B568647ADD41C3005B791750B08DE5
+  phantom_link_sta.uf2 685,056 bytes
+  SHA256 0BCAD12924F865D5D1333CA03B8AC725E78D7599BDD381D5E46871E9B2C1D75A
   Rebuild rather than trusting these hashes; they move with every commit.
 - Host validation: python firmware/tests/validate_assets.py
   Expected final line: HOST VALIDATION: PASS.
@@ -59,7 +59,7 @@ CURRENT STATE
   then cmake --build firmware/host/build and
   ctest --test-dir firmware/host/build --output-on-failure.
   6 tests: spec, frame, session, wire, handshake, banner.
-- Not implemented: ACK/retransmit, BYE teardown, TX queue, encryption,
+- Not implemented: BYE teardown, TX queue, encryption,
   authentication, replay authentication, SFO, watchdog, persistence.
 - Phantom_Link_rx/ and Phantom_Link_tx/ are rollback/reference only.
 
@@ -74,10 +74,8 @@ DECISIONS (see docs/adr/)
 NEXT TASK
 Work the ticket frontier. Read .scratch/phantom-link-v1/issues/ and pick the
 lowest-numbered open ticket whose blockers are all done.
-- 01, 02, and 03 are done and committed.
-- 04 is code-complete; its hardware criteria close with ticket 09.
-- 05 is code-complete; the reboot-ID observation joins ticket 09.
-- 06 (ACK and whole-message retransmit) is next and needs no hardware.
+- 01, 02, 03, 04, 05, and 06 are code-complete; their hardware criteria close with ticket 09.
+- 07 (TX queue and abort) is next and needs no hardware.
 - 22 (untethered power rig) is unblocked but needs hands on hardware.
 - Do not start a later ticket to "get ahead". The gates exist because crypto
   debugged on unstable framing is how projects die.
