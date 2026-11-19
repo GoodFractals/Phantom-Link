@@ -186,6 +186,7 @@ The pre-audit RX tree is retained for rollback. The unified firmware is the acti
 - `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.md` — compact digest.
 - `docs/GAMEPLAN.md` — phase-by-phase plan for the encrypted Bonnie & Clyde protocol, SFO channel, untethered hardware, and the final UI pass.
 - `docs/adr/` — decisions that are hard to reverse, with the alternatives that were rejected.
+- `.scratch/phantom-link-v1/` — the spec and 27-ticket backlog derived from the gameplan.
 - `GLOSSARY.md` — the project's fixed vocabulary.
 - `AGENTS.md` — build commands and hard rules for coding agents.
 - `docs/NEXT_CONTEXT_PROMPT.txt` — copy-paste bootstrap for a new AI context.

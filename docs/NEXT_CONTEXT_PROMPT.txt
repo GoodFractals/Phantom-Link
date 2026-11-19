@@ -1,12 +1,19 @@
-You are a senior embedded systems engineer. We are continuing the
-Phantom Link project. Read the attached PHANTOM_LINK_AUDIT_AND_HANDOFF.html
-before proposing code. Source of truth: the code, then the audit, then README.
-Do not trust README claims about encryption, static IP, or AP role; they are
-behind the firmware.
+You are a senior embedded systems engineer continuing the Phantom Link
+project. Read these before proposing code, in this order:
+
+1. AGENTS.md          build commands and hard rules
+2. GLOSSARY.md        the project's fixed vocabulary
+3. docs/GAMEPLAN.md   authoritative plan, frame spec, test matrix
+4. .scratch/phantom-link-v1/spec.md and issues/
+5. README.md          what exists today
+
+The code is the source of truth. The gameplan describes what to build next;
+the tickets are the executable backlog.
 
 REPO: https://github.com/GoodFractals/Phantom-Link
 COMMIT: [paste hash]
-BRANCH: [main or poc/handshake]
+BRANCH: poc/handshake (not pushed yet)
+FALLBACK TAG: poc/plaintext-v1  (known-good plaintext build)
 
 HARDWARE
 - 2x Raspberry Pi Pico 2 W (RP2350 + CYW43439)
@@ -15,69 +22,61 @@ HARDWARE
     DC GP16, CS GP17, +2 column offset
   - PSP-1000 joystick: X GP26/ADC0, Y GP27/ADC1
   - SELECT GP14, DELETE GP15, BACK GP12, all to GND with internal pull-ups
-- AP board: Barebones (host)
-- STA board: Jank Box 5000 (client)
-- Serial: [COMx / /dev/ttyACM0] = AP, [COMy / /dev/ttyACM1] = STA
+- AP board: Barebones (host, Clyde)
+- STA board: Jank Box 5000 (client, Bonnie)
+- Each rig runs from a 2000 mAh USB power bank zip-tied under the breadboard.
+  No enclosure, no battery-sense hardware; the pack LEDs are the gauge.
 
 CURRENT STATE
-- Implemented in firmware/: one main.c, dual AP/STA targets. IS_AP selects
-  only the Wi-Fi role; the OLED, ADC joystick, buttons, input polling, codec,
-  parser, and render path are unconditional in both builds.
-- Wi-Fi bring-up is non-blocking: the UI and input loop start before a STA
-  join completes, and failed joins retry in the main loop.
-- DHCP is not available in the SDK 2.3.1 AP build (CYW43_NETUTILS=0), so
-  the STA stops DHCP and uses static 192.168.4.2/24, gateway 192.168.4.1.
-- Numeric-page HUD is live: four RSSI bars on the STA, filled/hollow link
-  square beside LINK. The AP has no per-client RSSI, so its signal cell stays
-  empty until the STA relays a reading. BAT: is reserved, no sense path yet.
-- 49-code 3-digit Base-6, exact tokens, HELLO/HELLO_ACK/LINK_PING/LINK_PONG,
-  peer learning, 1 s heartbeat, 3 s timeout, non-blocking TX, boot splash.
-- Build verified on native Windows with Pico SDK 2.3.1:
-  firmware/build/phantom_link_ap.uf2 (670,720 bytes,
-  SHA256 E0C1C9CE3849B647B1865EF106C3F1004341D2E7EC5C3D349F0EDDF7EDD7D1E9),
-  firmware/build/phantom_link_sta.uf2 (677,376 bytes,
-  SHA256 D4CE0FB79BF9A82A4ACE21ACB2E099981BB626781348F790A5E82AAC9B1C5EC7),
-  zero warnings.
-- Host validation passed: 48-glyph/180-byte font, all 49 codec values,
-  21-character round-trip, V reachable, corrected numeric hitboxes, and
-  unconditional input/UI path.
-- Re-run it with: python firmware/tests/validate_assets.py
+- One firmware/main.c, two targets. IS_AP selects only the Wi-Fi role; the
+  OLED, ADC joystick, buttons, input polling, codec, parser, and render path
+  are unconditional in both builds.
+- Wi-Fi bring-up is non-blocking. Static STA address 192.168.4.2/24 because
+  the SDK 2.3.1 AP build has no DHCP server (CYW43_NETUTILS=0).
+- Numeric-page HUD: four RSSI bars on the STA, link square beside LINK. The
+  AP has no per-client RSSI, so its signal cell stays empty until the STA
+  relays a reading. BAT: is reserved and has no sense path.
+- 49-code 3-digit Base-6, HELLO/HELLO_ACK/LINK_PING/LINK_PONG, peer
+  learning, 1 s heartbeat, 3 s timeout, non-blocking TX, boot splash.
+- Handshake and bidirectional typed messaging are proven on hardware. The
+  full T2-T12 matrix and the current HUD build still need a hardware run.
+- Last verified build: Pico SDK 2.3.1, zero warnings.
+  phantom_link_ap.uf2 670,720 bytes
+  SHA256 E0C1C9CE3849B647B1865EF106C3F1004341D2E7EC5C3D349F0EDDF7EDD7D1E9
+  phantom_link_sta.uf2 677,376 bytes
+  SHA256 D4CE0FB79BF9A82A4ACE21ACB2E099981BB626781348F790A5E82AAC9B1C5EC7
+  Rebuild rather than trusting these hashes; they move with every commit.
+- Host validation: python firmware/tests/validate_assets.py
   Expected final line: HOST VALIDATION: PASS.
-- Hardware acceptance T2-T12 is pending; no board was connected.
-- Encryption, CRC/framing, authentication, sequence/duplicate detection,
-  and MAC-layer SFO are not implemented.
+- Not implemented: framing/CRC, encryption, authentication, replay
+  protection, SFO, watchdog, persistence. These are the backlog.
 - Phantom_Link_rx/ and Phantom_Link_tx/ are rollback/reference only.
-- docs/GAMEPLAN.md is the roadmap: framing, crypto, SFO, untethered hardware,
-  then the UI pass last. Follow its phase order; do not skip a gate.
 
-DECISIONS
-- One firmware source, two build targets: phantom_link_ap (IS_AP=1) and
-  phantom_link_sta (IS_AP=0).
-- IS_AP determines only the Wi-Fi role. Both boards run the full UI and input.
-- AP role: Barebones; STA role: Jank Box 5000. Confirmed before flashing.
-- Codec: 3-digit Base-6 over 49 codes (48 glyphs + space), implemented.
-- STA address: static 192.168.4.2/24 for the PoC because the AP has no DHCP
-  server. Replace with DHCP or a configurable address before product use.
-- Do not add Speck or MAC-layer SFO until T1-T7, T9, T10 pass on hardware.
+DECISIONS (see docs/adr/)
+- Speck128/128 CTR + CMAC, behind a cipher-agnostic interface with an AEAD slot.
+- SFO is application-layer and telemetry-only. No MAC-layer SFO is possible
+  with cyw43; do not claim it.
+- No battery-sense hardware and no enclosure.
+- Strictly two-party. Membership is physical possession; group support is a
+  non-goal, not a missing feature.
 
 NEXT TASK
-Flash the two UF2s and run the hardware acceptance matrix:
-1. Barebones AP: firmware/build/phantom_link_ap.uf2; Jank Box 5000 STA:
-   firmware/build/phantom_link_sta.uf2.
-2. Open one serial monitor per board at 115200 8N1.
-3. Run T2-T12 from the audit. Start with T2 (UI/input on both), T3
-   (association), and T4 (handshake), then T5 (loss/recovery), T6/T7 (SOS
-   and full glyph set in both directions), T9/T10 (no-link gate and
-   non-blocking send on either board).
-4. Paste both serial logs and a photo of each OLED. Report the first failing
-   test exactly; do not reimplement Phases 2-5.
-Minimum green bar: T1-T7, T9, T10 in both directions. T8/T11/T12 are
-implemented and should be tested before calling the PoC stable.
+Work the ticket frontier. Read .scratch/phantom-link-v1/issues/ and pick the
+lowest-numbered open ticket whose blockers are all done.
+- 01 (host harness, -Werror, regression checklist) and 02 (boot banner) are
+  both unblocked.
+- 22 (untethered power rig) is unblocked but needs hands on hardware.
+- Do not start a later ticket to "get ahead". The gates exist because crypto
+  debugged on unstable framing is how projects die.
 
 RULES
-- Do not rewrite the UI art.
-- Do not add crypto or MAC-layer SFO yet.
-- Do not clean build until the working UF2s are archived.
-- Do not claim "encrypted" or "covert" in docs until implemented.
-- Ask for serial logs/photos when a hardware result is ambiguous.
+- One ticket, one commit, named after the ticket number.
+- A ticket is done when its acceptance criteria pass on hardware, not when
+  it compiles.
+- If a change breaks a baseline item in docs/GAMEPLAN.md §2, revert it.
+- Do not rewrite the UI art until ticket 24. UI work may not touch proto_*,
+  net_link.c, or timing constants.
+- Do not claim "encrypted" or "covert" in docs until the relevant ticket is
+  green on hardware.
+- Ask for serial logs and photos when a hardware result is ambiguous.
 - Keep the Project Bible out of the public repo (personal data).
