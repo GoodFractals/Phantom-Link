@@ -179,6 +179,17 @@ uint8_t proto_msg_tx_symbol(const proto_msg_tx_t *tx) {
     return (uint8_t)(((unsigned)code / divisor) % 6u);
 }
 
+uint8_t proto_msg_tx_symbol_at(const proto_msg_tx_t *tx, uint8_t pos) {
+    if (!tx || pos >= tx->total_symbols) return 0;
+
+    char c = tx->text[pos / 3u];
+    const char *p = strchr(tx->alphabet, c);
+    int code = p ? (int)(p - tx->alphabet) : 0;
+
+    unsigned divisor = (pos % 3u == 0) ? 36u : (pos % 3u == 1) ? 6u : 1u;
+    return (uint8_t)(((unsigned)code / divisor) % 6u);
+}
+
 void proto_msg_tx_final_sent(proto_msg_tx_t *tx, uint32_t now,
                              uint32_t timeout_ms) {
     if (!tx) return;

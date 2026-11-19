@@ -159,7 +159,7 @@ def main() -> int:
     assert "TOK_HELLO" not in main_text
     assert "proto/proto_frame.c" in cmake_text
     assert "proto/proto_session.c" in cmake_text
-    assert "proto/proto_msg.c" in cmake_text
+    assert "proto/proto_txq.c" in cmake_text
     assert "get_rand_32()" in main_text
     assert "proto_session_accept" in main_text
     assert "proto_msg_rx_frame" in main_text
@@ -169,7 +169,10 @@ def main() -> int:
     assert "session_id++" not in main_text
     assert "SESSION stats" in main_text
     assert "RTT timeout" in main_text
-    assert "PROTO_MSG_ACK_PAYLOAD" in main_text
+    assert "PROTO_TYPE_BYE" in main_text
+    assert "request_teardown" in main_text
+    assert "TEARDOWN requested" in main_text
+    assert "RX BYE: peer closing link" in main_text
     assert "phantom_link_ap" in cmake_text and "phantom_link_sta" in cmake_text
     assert "IS_AP=1" in cmake_text or "IS_AP=${is_ap}" in cmake_text
 

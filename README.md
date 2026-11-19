@@ -24,7 +24,7 @@ This is a handshake-first proof of concept. The link is **plaintext and unauthen
 
 **Hardware status**
 - Both UF2s build warning-free with Pico SDK 2.3.1 on native Windows, with `-Wall -Wextra -Werror`.
-- `firmware/build/phantom_link_ap.uf2` (678,912 bytes, SHA256 `164A9E435075584C7A07D05BC60471B703B568647ADD41C3005B791750B08DE5`) and `firmware/build/phantom_link_sta.uf2` (685,056 bytes, SHA256 `0BCAD12924F865D5D1333CA03B8AC725E78D7599BDD381D5E46871E9B2C1D75A`) are the current framed builds.
+- `firmware/build/phantom_link_ap.uf2` (680,960 bytes, SHA256 `B4DA78F9B357206872C00EEEB26C8B857A923E15F23AFEF045E6E8645712F64D`) and `firmware/build/phantom_link_sta.uf2` (687,616 bytes, SHA256 `BD57B20CD03C712B00039F33204264ED2B31CBAE3F3199EAABB289FF5F75B71A`) are the current framed builds.
 - **No board was connected during the build session.** The framed build still needs the T2–T12 matrix, including handshake and bidirectional messaging, on both boards. See `docs/REGRESSION.md` and the audit matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
 
 **Not implemented yet**
@@ -148,13 +148,13 @@ For the PoC, **Barebones = AP (host)** and **Jank Box 5000 = STA (client)**. Bot
 Open one serial monitor per board at 115200 8N1. Expected boot banners:
 
 ```text
-phantom-link v1 76acd4b8 AP
+phantom-link v1 6b1dff08 AP
 AP active: 192.168.4.1
 UDP listening on 4444
 ```
 
 ```text
-phantom-link v1 76acd4b8 STA
+phantom-link v1 6b1dff08 STA
 STA static IP: 192.168.4.2 (DHCP disabled)
 STA connecting to Phantom_Link...
 STA join continues in the main loop

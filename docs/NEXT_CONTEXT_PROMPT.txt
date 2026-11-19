@@ -47,11 +47,11 @@ CURRENT STATE
   framed/session build (tickets 03-05) has not been flashed; the full T2-T12
   matrix and the HUD build still need a hardware run.
 - Last verified build: Pico SDK 2.3.1, zero warnings under -Werror.
-  main.c build hash 76acd4b8
-  phantom_link_ap.uf2 678,912 bytes
-  SHA256 164A9E435075584C7A07D05BC60471B703B568647ADD41C3005B791750B08DE5
-  phantom_link_sta.uf2 685,056 bytes
-  SHA256 0BCAD12924F865D5D1333CA03B8AC725E78D7599BDD381D5E46871E9B2C1D75A
+  main.c build hash 6b1dff08
+  phantom_link_ap.uf2 680,960 bytes
+  SHA256 B4DA78F9B357206872C00EEEB26C8B857A923E15F23AFEF045E6E8645712F64D
+  phantom_link_sta.uf2 687,616 bytes
+  SHA256 BD57B20CD03C712B00039F33204264ED2B31CBAE3F3199EAABB289FF5F75B71A
   Rebuild rather than trusting these hashes; they move with every commit.
 - Host validation: python firmware/tests/validate_assets.py
   Expected final line: HOST VALIDATION: PASS.
@@ -74,8 +74,8 @@ DECISIONS (see docs/adr/)
 NEXT TASK
 Work the ticket frontier. Read .scratch/phantom-link-v1/issues/ and pick the
 lowest-numbered open ticket whose blockers are all done.
-- 01, 02, 03, 04, 05, and 06 are code-complete; their hardware criteria close with ticket 09.
-- 07 (TX queue and abort) is next and needs no hardware.
+- 01, 02, 03, 04, 05, 06, 07, and 08 are code-complete; their hardware criteria close with ticket 09.
+- 09 (framing hardware acceptance) is the next gate and needs the boards.
 - 22 (untethered power rig) is unblocked but needs hands on hardware.
 - Do not start a later ticket to "get ahead". The gates exist because crypto
   debugged on unstable framing is how projects die.

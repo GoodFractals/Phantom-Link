@@ -37,6 +37,7 @@
 #include "proto/proto_frame.h"
 #include "proto/proto_msg.h"
 #include "proto/proto_session.h"
+#include "proto/proto_txq.h"
 
 #ifndef IS_AP
 #define IS_AP 1
@@ -165,6 +166,7 @@ static uint32_t last_session_stats_ms = 0;
 
 // --- Transmit state machine ---------------------------------------------------
 static proto_msg_tx_t tx_msg;
+static txq_t tx_queue;
 static uint32_t tx_next_ms = 0;
 static uint32_t tx_frames = 0;
 static char tx_notice[12] = "";
@@ -347,6 +349,7 @@ static void set_link_down(const char *why) {
     link_state = LINK_DOWN;
     peer_valid = false;
     manual_ping = false;
+    proto_session_init(&session, 0);
     proto_msg_rx_reset(&rx_msg);
     ui_active = true;
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
@@ -355,6 +358,7 @@ static void set_link_down(const char *why) {
         proto_msg_tx_abort(&tx_msg);
         tx_frames = 0;
         tx_next_ms = 0;
+        txq_clear(&tx_queue);
         printf("TX aborted: no link\n");
     }
 
@@ -373,6 +377,7 @@ static void adopt_session(uint32_t id, const char *why) {
         printf("TX aborted: session reset\n");
         proto_msg_tx_abort(&tx_msg);
         tx_frames = 0;
+        txq_clear(&tx_queue);
     }
 
     printf("SESSION %s id=0x%08x old=0x%08x\n", why, (unsigned)id,
@@ -383,6 +388,18 @@ static void begin_handshake(void) {
     uint32_t id = get_rand_32();
     if (id == 0) id = 1; /* keep zero as the "no session" sentinel */
     adopt_session(id, "new");
+}
+
+static void request_teardown(const char *reason) {
+    if (link_state != LINK_UP) return;
+
+    printf("TEARDOWN requested: %s\n", reason);
+    if (send_control_frame(PROTO_TYPE_BYE)) {
+        printf("BYE sent\n");
+    } else {
+        printf("BYE send failed\n");
+    }
+    set_link_down("BYE");
 }
 
 static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
@@ -457,6 +474,11 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
             manual_ping = false;
         }
         if (link_state != LINK_UP) set_link_up("PONG");
+        break;
+
+    case PROTO_TYPE_BYE:
+        printf("RX BYE: peer closing link\n");
+        set_link_down("BYE");
         break;
 
     case PROTO_TYPE_ACK: {
@@ -593,11 +615,50 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
     handle_frame(&frame, addr, port);
 }
 
-// --- Transmit path ------------------------------------------------------------
+static bool tx_enqueue_message(void) {
+    uint8_t pos;
+
+    tx_frames = 0;
+    for (pos = tx_msg.pos; pos < tx_msg.total_symbols; pos++) {
+        txq_item_t item;
+        memset(&item, 0, sizeof item);
+
+        tx_frames++;
+        if ((tx_frames % 8u) == 0u) item.flags |= PROTO_FLAG_ACK_REQ;
+
+        item.payload_len = PROTO_MSG_SYMBOL_PAYLOAD;
+        write_u16(item.payload, tx_msg.msg_id);
+        item.payload[2] = pos;
+        item.payload[3] = proto_msg_tx_symbol_at(&tx_msg, pos);
+
+        if (!txq_enqueue(&tx_queue, &item)) {
+            printf("TX queue overflow (depth=%u)\n", (unsigned)TXQ_DEPTH);
+            return false;
+        }
+    }
+
+    {
+        txq_item_t item;
+        memset(&item, 0, sizeof item);
+        item.flags = PROTO_FLAG_FINAL | PROTO_FLAG_ACK_REQ;
+        item.payload_len = PROTO_MSG_FINAL_PAYLOAD;
+        write_u16(item.payload, tx_msg.msg_id);
+        item.payload[2] = tx_msg.total_symbols;
+
+        if (!txq_enqueue(&tx_queue, &item)) {
+            printf("TX queue overflow (depth=%u)\n", (unsigned)TXQ_DEPTH);
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static void abort_tx(const char *why) {
     if (tx_active()) {
         printf("TX aborted: %s\n", why);
     }
+    txq_clear(&tx_queue);
     proto_msg_tx_abort(&tx_msg);
     tx_frames = 0;
     tx_next_ms = 0;
@@ -623,15 +684,22 @@ static void start_send(void) {
         return;
     }
 
-    tx_frames = 0;
+    txq_clear(&tx_queue);
+    if (!tx_enqueue_message()) {
+        txq_clear(&tx_queue);
+        proto_msg_tx_abort(&tx_msg);
+        ui_active = true;
+        return;
+    }
+
     tx_next_ms = now_ms();
     tx_notice[0] = '\0';
     ui_active = false;
     active_group = -1;
     tap_count = 0;
 
-    printf("TX start msg=%u len=%u\n", (unsigned)tx_msg.msg_id,
-           (unsigned)tx_msg.len);
+    printf("TX start msg=%u len=%u queued=%u\n", (unsigned)tx_msg.msg_id,
+           (unsigned)tx_msg.len, (unsigned)txq_count(&tx_queue));
 }
 
 static void tx_failed(void) {
@@ -641,19 +709,16 @@ static void tx_failed(void) {
     snprintf(tx_notice, sizeof tx_notice, "NO ACK");
     tx_notice_until = now_ms() + TX_NOTICE_MS;
 
+    txq_clear(&tx_queue);
     proto_msg_tx_abort(&tx_msg);
     tx_frames = 0;
     ui_active = true;
 }
 
 static void tx_tick(uint32_t now) {
-    if (!tx_active()) return;
-    if ((int32_t)(now - tx_next_ms) < 0) return;
+    txq_item_t item;
 
-    if (link_state != LINK_UP) {
-        abort_tx("no link");
-        return;
-    }
+    if (!tx_active()) return;
 
     if (tx_msg.phase == PROTO_TX_WAITING) {
         if (!proto_msg_tx_timed_out(&tx_msg, now)) return;
@@ -663,51 +728,46 @@ static void tx_tick(uint32_t now) {
             return;
         }
 
-        tx_frames = 0;
-        tx_next_ms = now;
-        printf("TX retry msg=%u attempt=%u from=%u\n",
-               (unsigned)tx_msg.msg_id, (unsigned)tx_msg.attempt,
-               (unsigned)tx_msg.pos);
-        return;
-    }
-
-    if (tx_msg.pos < tx_msg.total_symbols) {
-        uint8_t payload[PROTO_MSG_SYMBOL_PAYLOAD];
-        write_u16(payload, tx_msg.msg_id);
-        payload[2] = tx_msg.pos;
-        payload[3] = proto_msg_tx_symbol(&tx_msg);
-
-        uint8_t flags = 0;
-        tx_frames++;
-        if ((tx_frames % 8u) == 0u) flags |= PROTO_FLAG_ACK_REQ;
-
-        if (!send_data_frame(payload, sizeof payload, flags)) {
-            tx_next_ms = now + SYMBOL_INTERVAL_MS;
+        txq_clear(&tx_queue);
+        if (!tx_enqueue_message()) {
+            tx_failed();
             return;
         }
 
-        printf("TX glyph '%c' pos=%u sym=%u\n",
-               tx_msg.text[tx_msg.pos / 3u], (unsigned)tx_msg.pos,
-               (unsigned)payload[3]);
+        tx_next_ms = now;
+        printf("TX retry msg=%u attempt=%u from=%u queued=%u\n",
+               (unsigned)tx_msg.msg_id, (unsigned)tx_msg.attempt,
+               (unsigned)tx_msg.pos, (unsigned)txq_count(&tx_queue));
+        return;
+    }
+
+    if (txq_empty(&tx_queue)) return;
+    if ((int32_t)(now - tx_next_ms) < 0) return;
+
+    if (link_state != LINK_UP) {
+        abort_tx("no link");
+        return;
+    }
+
+    if (!txq_peek(&tx_queue, &item)) return;
+
+    err_t err = send_data_frame(item.payload, item.payload_len, item.flags);
+    if (err != ERR_OK) {
+        tx_next_ms = now + SYMBOL_INTERVAL_MS;
+        return;
+    }
+
+    txq_dequeue(&tx_queue, NULL);
+
+    if (item.flags & PROTO_FLAG_FINAL) {
+        printf("TX END msg=%u total=%u\n", (unsigned)tx_msg.msg_id,
+               (unsigned)tx_msg.total_symbols);
+        proto_msg_tx_final_sent(&tx_msg, now, ACK_TIMEOUT_MS);
+        tx_next_ms = tx_msg.deadline_ms;
+    } else {
         tx_msg.pos++;
         tx_next_ms = now + SYMBOL_INTERVAL_MS;
-        return;
     }
-
-    uint8_t payload[PROTO_MSG_FINAL_PAYLOAD];
-    write_u16(payload, tx_msg.msg_id);
-    payload[2] = tx_msg.total_symbols;
-
-    if (!send_data_frame(payload, sizeof payload,
-                         PROTO_FLAG_FINAL | PROTO_FLAG_ACK_REQ)) {
-        tx_next_ms = now + SYMBOL_INTERVAL_MS;
-        return;
-    }
-
-    printf("TX END msg=%u total=%u\n", (unsigned)tx_msg.msg_id,
-           (unsigned)tx_msg.total_symbols);
-    proto_msg_tx_final_sent(&tx_msg, now, ACK_TIMEOUT_MS);
-    tx_next_ms = tx_msg.deadline_ms;
 }
 
 // --- UI -----------------------------------------------------------------------
@@ -1026,6 +1086,9 @@ static int last_joy_dc = 0;
 static uint32_t last_move_ms = 0;
 
 static void input_tick(uint32_t now) {
+    static uint32_t teardown_hold_start = 0;
+    static bool teardown_triggered = false;
+
     adc_select_input(0);
     uint16_t x = adc_read();
     adc_select_input(1);
@@ -1057,6 +1120,21 @@ static void input_tick(uint32_t now) {
     bool delete_pressed = button_pressed(&btn_delete, now);
     bool back_pressed = button_pressed(&btn_back, now);
     if (delete_pressed || back_pressed) handle_delete_button();
+
+    /* Hold DELETE + BACK for 1.5 s to request a clean teardown. */
+    bool del_raw = (gpio_get(BTN_DELETE) == 0);
+    bool back_raw = (gpio_get(BTN_BACK) == 0);
+    if (del_raw && back_raw) {
+        if (teardown_hold_start == 0) teardown_hold_start = now;
+        if (!teardown_triggered &&
+            (uint32_t)(now - teardown_hold_start) >= 1500) {
+            teardown_triggered = true;
+            request_teardown("user");
+        }
+    } else {
+        teardown_hold_start = 0;
+        teardown_triggered = false;
+    }
 }
 
 // --- Network timers -----------------------------------------------------------
@@ -1258,6 +1336,7 @@ int main(void) {
     // Both boards carry the same BOM. Bring up the full local UI and controls
     // before Wi-Fi so input works even while the STA is still joining.
     input_init();
+    txq_init(&tx_queue);
     proto_msg_rx_init(&rx_msg, GLYPHS, (uint8_t)(sizeof(GLYPHS) - 1));
     proto_msg_tx_init(&tx_msg, GLYPHS, (uint8_t)(sizeof(GLYPHS) - 1));
     drawMainUI();

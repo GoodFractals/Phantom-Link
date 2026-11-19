@@ -122,6 +122,9 @@ bool proto_msg_tx_begin(proto_msg_tx_t *tx, const char *text, uint8_t len);
 /* Base-6 digit at the current position, 0..5. */
 uint8_t proto_msg_tx_symbol(const proto_msg_tx_t *tx);
 
+/* Base-6 digit at an arbitrary position, 0..5, without changing state. */
+uint8_t proto_msg_tx_symbol_at(const proto_msg_tx_t *tx, uint8_t pos);
+
 /* Records that the FINAL frame was handed to the network. */
 void proto_msg_tx_final_sent(proto_msg_tx_t *tx, uint32_t now,
                              uint32_t timeout_ms);

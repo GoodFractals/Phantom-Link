@@ -24,6 +24,7 @@ add_library(phantom_proto STATIC
     "${PROTO_DIR}/proto_frame.c"
     "${PROTO_DIR}/proto_session.c"
     "${PROTO_DIR}/proto_msg.c"
+    "${PROTO_DIR}/proto_txq.c"
 )
 target_include_directories(phantom_proto PUBLIC "${PROTO_DIR}")
 target_compile_options(phantom_proto PRIVATE ${WARNINGS})
@@ -57,6 +58,11 @@ add_executable(test_reliable tests/test_reliable.c)
 target_link_libraries(test_reliable PRIVATE phantom_proto)
 target_compile_options(test_reliable PRIVATE ${WARNINGS})
 add_test(NAME reliable COMMAND test_reliable)
+
+add_executable(test_txq tests/test_txq.c)
+target_link_libraries(test_txq PRIVATE phantom_proto)
+target_compile_options(test_txq PRIVATE ${WARNINGS})
+add_test(NAME txq COMMAND test_txq)
 
 add_executable(test_banner tests/test_banner.c)
 target_include_directories(test_banner PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")
