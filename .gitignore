@@ -29,6 +29,9 @@ compile_commands.json
 __pycache__/
 *.pyc
 
+# Serial monitor captures
+logs/
+
 # Editor / vendor SDK checkouts
 .vscode/
 u8g2/

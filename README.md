@@ -142,6 +142,17 @@ RX HELLO_ACK
 LINK UP (HELLO_ACK) peer=192.168.4.1:4444
 ```
 
+### Robust serial capture
+
+The Pico's USB CDC port disappears when the board resets, so a monitor opened afterward can miss the banner. Start the logger first, then reset or flash the board. It reconnects automatically and writes a raw log under `logs\`.
+
+```powershell
+.\tools\serial_monitor.ps1 -Port COM5
+.\tools\serial_monitor.ps1 -Port COM6
+```
+
+Use one window per board and press `Ctrl+C` to stop. PuTTY or Tera Term with log-to-file also works if started before the reset, but those do not reopen the port automatically.
+
 ## Repository layout
 
 ```text
@@ -154,6 +165,7 @@ firmware/            Unified AP/STA firmware and build definition
   boot_ui.h          1024-byte boot splash art
   CMakeLists.txt     phantom_link_ap + phantom_link_sta targets
   tests/             Host-side font/codec/UI/role validation (no SDK needed)
+tools/               Auto-reconnecting serial logger for boot captures
 docs/                Audit, remediation plan, test matrix, AI handoff
 Phantom_Link_rx/     Original RX firmware, kept as rollback reference
 Phantom_Link_tx/     Original TX tree, stale pre-Base-6 fork
