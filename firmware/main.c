@@ -26,6 +26,7 @@
 #include "lwip/netif.h"
 #include "lwip/ip_addr.h"
 #include "lwip/ip4_addr.h"
+#include "lwip/dhcp.h"
 
 #include "oled.h"
 #include "alpha_ui.h"
@@ -47,6 +48,15 @@ static const bool is_ap = (IS_AP != 0);
 #define WIFI_SSID "Phantom_Link"
 #define WIFI_PASSWORD "12345678"
 #define UDP_PORT 4444
+
+// The SDK build used here compiles the cyw43 AP interface without the optional
+// DHCP server (CYW43_NETUTILS=0), so the AP never leases an address. The PoC
+// therefore uses a fixed STA address in the AP's default subnet. Both numbers
+// match the AP's built-in 192.168.4.1/24 interface.
+#define STA_IP0 192
+#define STA_IP1 168
+#define STA_IP2 4
+#define STA_IP3 2
 
 #define WIFI_RETRY_MS 5000
 #define HELLO_INTERVAL_MS 1000
@@ -746,13 +756,53 @@ static void input_tick(uint32_t now) {
 }
 
 // --- Network timers -----------------------------------------------------------
+static const char *sta_status_name(int st) {
+    switch (st) {
+        case CYW43_LINK_DOWN:  return "down";
+        case CYW43_LINK_JOIN:  return "joining";
+        case CYW43_LINK_NOIP:  return "joined, no IP";
+        case CYW43_LINK_UP:    return "up";
+        case CYW43_LINK_FAIL:  return "join failed";
+        case CYW43_LINK_NONET: return "network not found";
+        case CYW43_LINK_BADAUTH: return "bad auth";
+        default:               return "unknown";
+    }
+}
+
+static void sta_use_static_ip(void) {
+    struct netif *n = netif_default;
+    if (!n) {
+        printf("STA netif missing; static IP not set\n");
+        return;
+    }
+
+    ip4_addr_t ip, mask, gw;
+    IP_ADDR4(&ip, STA_IP0, STA_IP1, STA_IP2, STA_IP3);
+    IP_ADDR4(&mask, 255, 255, 255, 0);
+    IP_ADDR4(&gw, STA_IP0, STA_IP1, STA_IP2, 1);
+
+    cyw43_arch_lwip_begin();
+    dhcp_stop(n);
+    netif_set_addr(n, &ip, &mask, &gw);
+    cyw43_arch_lwip_end();
+
+    printf("STA static IP: %s (DHCP disabled)\n", ip4addr_ntoa(&ip));
+}
+
 static void wifi_service(uint32_t now) {
+    static int last_sta_status = -1;
+
     if (is_ap) {
         wifi_ready = true;
         return;
     }
 
     int st = cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA);
+    if (st != last_sta_status) {
+        printf("STA status: %s (%d)\n", sta_status_name(st), st);
+        last_sta_status = st;
+    }
+
     if (st == CYW43_LINK_UP) {
         const ip4_addr_t *ip =
             netif_default ? netif_ip4_addr(netif_default) : NULL;
@@ -824,6 +874,13 @@ static bool wifi_init(void) {
         printf("AP active: 192.168.4.1\n");
     } else {
         cyw43_arch_enable_sta_mode();
+
+        // Keep the radio awake; power save adds latency and dropped packets.
+        cyw43_wifi_pm(&cyw43_state, CYW43_PERFORMANCE_PM);
+
+        // The AP build has no DHCP server, so do not wait for a lease.
+        sta_use_static_ip();
+
         printf("STA connecting to %s...\n", WIFI_SSID);
 
         last_wifi_retry_ms = now_ms();

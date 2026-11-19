@@ -7,7 +7,7 @@
 
 > This is the compact companion to the HTML. The HTML contains the complete defect register, line references, reference patches, risk register, and appendices. If you only attach one file to a new AI context, attach the HTML.
 
-> **Post-audit implementation (2026-11-18):** `firmware/` now contains one `main.c` and dual CMake targets (`phantom_link_ap` with `IS_AP=1`, `phantom_link_sta` with `IS_AP=0`). Both UF2s build warning-free from that source with Pico SDK 2.3.1 on native Windows: `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (674,816 bytes). `IS_AP` selects only the Wi-Fi role; the OLED, ADC joystick, buttons, input polling, codec, parser, and render path are unconditional, and Wi-Fi bring-up is non-blocking. The source implements the 49-code 3-digit Base-6 transport, exact token parsing, `HELLO`/`HELLO_ACK`/`LINK_PING`/`LINK_PONG`, peer learning, a 1 s heartbeat, a 3 s timeout, and non-blocking TX. Host validation passes for the 48-glyph/180-byte font, all 49 codec values, a 21-character round-trip, the `V` fifth tap, the corrected numeric hitboxes, and the unconditional input/UI path. **No board was connected, so the hardware acceptance tests T2–T12 remain pending.** Pixel-level OCR corrected three UI facts: `SOS` is row 2, numeric bottom-right is the `LINK` indicator (not punctuation), and alpha `WXYZ` gains `V` as a fifth tap. See §4 and §9.
+> **Post-audit implementation (2026-11-18):** `firmware/` now contains one `main.c` and dual CMake targets (`phantom_link_ap` with `IS_AP=1`, `phantom_link_sta` with `IS_AP=0`). Both UF2s build warning-free from that source with Pico SDK 2.3.1 on native Windows: `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (675,840 bytes). `IS_AP` selects only the Wi-Fi role; the OLED, ADC joystick, buttons, input polling, codec, parser, and render path are unconditional, and Wi-Fi bring-up is non-blocking. The source implements the 49-code 3-digit Base-6 transport, exact token parsing, `HELLO`/`HELLO_ACK`/`LINK_PING`/`LINK_PONG`, peer learning, a 1 s heartbeat, a 3 s timeout, and non-blocking TX. Host validation passes for the 48-glyph/180-byte font, all 49 codec values, a 21-character round-trip, the `V` fifth tap, the corrected numeric hitboxes, and the unconditional input/UI path. **No board was connected, so the hardware acceptance tests T2–T12 remain pending.** Pixel-level OCR corrected three UI facts: `SOS` is row 2, numeric bottom-right is the `LINK` indicator (not punctuation), and alpha `WXYZ` gains `V` as a fifth tap. See §4 and §9.
 
 ---
 
@@ -53,6 +53,8 @@ target_compile_definitions(phantom_link_sta PRIVATE IS_AP=0)
 ```
 
 “Identical firmware” means identical source and behavior, not byte-identical UF2s: the role constant is compiled in. The current implementation stores it in a `static const bool is_ap` and keeps the OLED, ADC, button, codec, and parser paths outside every role conditional. A future single-binary option is to read SELECT at boot (held = AP, released = STA) and set the same runtime variable.
+
+The SDK 2.3.1 cyw43 build is compiled with `CYW43_NETUTILS=0`, so the AP has no DHCP server. The STA therefore stops DHCP and uses the fixed address `192.168.4.2/24`, gateway `192.168.4.1`. This is a PoC transport decision; a product build should add a DHCP server or make the address configurable.
 
 For the PoC, the user confirmed: **Barebones = AP (host)**, **Jank Box 5000 = STA (client)**. The earlier audit recommendation (Jank Box = AP) is superseded. The README’s “Receiver acts as Access Point” is the line that is wrong.
 
@@ -128,7 +130,7 @@ Behavior:
 - Gate SEND on `LINK_UP`; keep the draft when down.
 - LED on when up, off when down.
 
-This removes the need for the README’s “forced static IP.” The AP learns the STA from `addr`; the STA learns the AP from `HELLO_ACK`.
+The AP learns the STA from `addr`; the STA learns the AP from `HELLO_ACK`. The STA still uses a fixed `192.168.4.2` address because the AP build has no DHCP server; peer learning is independent of how that address was assigned.
 
 ---
 
@@ -152,8 +154,8 @@ This removes the need for the README’s “forced static IP.” The AP learns t
 
 - **T1** Both targets build from one source, no duplicated `main.c`.
 - **T2** Both boards boot the UI; joystick, buttons, and multi-tap work on each.
-- **T3** STA joins the AP; AP logs the peer.
-- **T4** `HELLO` → `HELLO_ACK`; both print `LINK UP`.
+- **T3** STA prints `STA status: joining`, then `STA status: up` and `STA IP: 192.168.4.2`; no `bad auth` or `network not found`.
+- **T4** `HELLO` → `HELLO_ACK`; both print `LINK UP` with the peer IP (`192.168.4.1` on the STA, `192.168.4.2` on the AP).
 - **T5** Power-cycle the STA: the AP prints `LINK LOST` ≤3 s; after the STA boots, the AP returns to `LINK UP` without an AP reboot and the STA prints `LINK UP`.
 - **T6** SOS round-trips both ways: the receiving serial prints `!!! SOS SIGNAL RECEIVED !!!` only for exact SOS; the other OLED shows `SOS`; no false positives.
 - **T7** `TEST 123 =+-.,?!()[]"` round-trips exactly in both directions.
@@ -169,13 +171,13 @@ This removes the need for the README’s “forced static IP.” The AP learns t
 
 ## 9. Exact build / flash commands
 
-**Verified 2026-11-18 on native Windows** (Pico SDK 2.3.1, CMake 4.0.0-rc1, Ninja 1.13.2, Arm GNU Toolchain 14.2). Both targets built warning-free from a clean build; AP UF2 670,720 bytes, STA UF2 674,816 bytes. The small size difference reflects the Wi-Fi role branch; the OLED, input, codec, and parser paths are shared.
+**Verified 2026-11-18 on native Windows** (Pico SDK 2.3.1, CMake 4.0.0-rc1, Ninja 1.13.2, Arm GNU Toolchain 14.2). Both targets built warning-free from a clean build; AP UF2 670,720 bytes, STA UF2 675,840 bytes. The small size difference reflects the Wi-Fi role branch; the OLED, input, codec, and parser paths are shared.
 
 Clean-build SHA256:
 
 ```text
 04011281D53C5D4CDCEBD6B246A7351B8595A98652CAD92E4A85D4BFC1B2201A  phantom_link_ap.uf2
-EF3465E1A30EB3605D98FF1B6FE2CF02DE51AB8EB6B9563BE6FD098BAD7E19F1  phantom_link_sta.uf2
+07685D0783E8E7F6A4209BBCBC6F8214188996A6BF320393684840DE054A4DDB  phantom_link_sta.uf2
 ```
 
 ```powershell
@@ -263,4 +265,4 @@ git push origin poc-handshake
 
 ## 11. One-paragraph handoff
 
-> Phantom Link is two Pico 2 W boards with the same BOM: SH1106 OLED, PSP joystick on ADC0/ADC1, and SELECT/DELETE on GP14/GP15. The Barebones Pico is the AP host; the Jank Box 5000 is the STA client. One `firmware/main.c` now builds two targets: `phantom_link_ap` (`IS_AP=1`) hosts the private network; `phantom_link_sta` (`IS_AP=0`) joins it and initiates `HELLO`. `IS_AP` selects only the Wi-Fi role; the full UI, input loop, codec, parser, and screen path are unconditional, so both boards type, send, receive, decode, and render. Wi-Fi bring-up is non-blocking, so the UI and controls run while the STA joins. The implemented PoC is a plaintext UDP link: 49-code 3-digit Base-6 transport, exact-length `HELLO`/`HELLO_ACK`/`LINK_PING`/`LINK_PONG`/`END` parsing, peer learning from the received address, a 1 s heartbeat, a 3 s timeout, and a non-blocking TX state machine. Both UF2s build warning-free, and host font/codec/UI validation passes. No board was connected in the build session, so hardware acceptance T2–T12 is still pending. Encryption, CRC/framing, sequence/duplicate detection, and true MAC-layer SFO are deliberately not implemented. Do not add crypto or SFO until T1–T7, T9, T10 pass on hardware. The full audit is in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html`.
+> Phantom Link is two Pico 2 W boards with the same BOM: SH1106 OLED, PSP joystick on ADC0/ADC1, and SELECT/DELETE on GP14/GP15. The Barebones Pico is the AP host; the Jank Box 5000 is the STA client. One `firmware/main.c` now builds two targets: `phantom_link_ap` (`IS_AP=1`) hosts the private network; `phantom_link_sta` (`IS_AP=0`) joins it and initiates `HELLO`. `IS_AP` selects only the Wi-Fi role; the full UI, input loop, codec, parser, and screen path are unconditional, so both boards type, send, receive, decode, and render. Wi-Fi bring-up is non-blocking, so the UI and controls run while the STA joins. Because the SDK 2.3.1 AP build has no DHCP server, the STA uses the fixed address `192.168.4.2/24` with gateway `192.168.4.1`. The implemented PoC is a plaintext UDP link: 49-code 3-digit Base-6 transport, exact-length `HELLO`/`HELLO_ACK`/`LINK_PING`/`LINK_PONG`/`END` parsing, peer learning from the received address, a 1 s heartbeat, a 3 s timeout, and a non-blocking TX state machine. Both UF2s build warning-free, and host font/codec/UI validation passes. The first two-board logs showed the AP up and the STA waiting for an IP; the static-address fix targets that failure. Hardware acceptance T2–T12 is still pending. Encryption, CRC/framing, sequence/duplicate detection, and true MAC-layer SFO are deliberately not implemented. Do not add crypto or SFO until T1–T7, T9, T10 pass on hardware. The full audit is in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html`.

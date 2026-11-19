@@ -25,13 +25,15 @@ CURRENT STATE
   parser, and render path are unconditional in both builds.
 - Wi-Fi bring-up is non-blocking: the UI and input loop start before a STA
   join completes, and failed joins retry in the main loop.
+- DHCP is not available in the SDK 2.3.1 AP build (CYW43_NETUTILS=0), so
+  the STA stops DHCP and uses static 192.168.4.2/24, gateway 192.168.4.1.
 - 49-code 3-digit Base-6, exact tokens, HELLO/HELLO_ACK/LINK_PING/LINK_PONG,
   peer learning, 1 s heartbeat, 3 s timeout, non-blocking TX, boot splash.
 - Build verified on native Windows with Pico SDK 2.3.1:
   firmware/build/phantom_link_ap.uf2 (670,720 bytes,
   SHA256 04011281D53C5D4CDCEBD6B246A7351B8595A98652CAD92E4A85D4BFC1B2201A),
-  firmware/build/phantom_link_sta.uf2 (674,816 bytes,
-  SHA256 EF3465E1A30EB3605D98FF1B6FE2CF02DE51AB8EB6B9563BE6FD098BAD7E19F1),
+  firmware/build/phantom_link_sta.uf2 (675,840 bytes,
+  SHA256 07685D0783E8E7F6A4209BBCBC6F8214188996A6BF320393684840DE054A4DDB),
   zero warnings.
 - Host validation passed: 48-glyph/180-byte font, all 49 codec values,
   21-character round-trip, V reachable, corrected numeric hitboxes, and
@@ -49,6 +51,8 @@ DECISIONS
 - IS_AP determines only the Wi-Fi role. Both boards run the full UI and input.
 - AP role: Barebones; STA role: Jank Box 5000. Confirmed before flashing.
 - Codec: 3-digit Base-6 over 49 codes (48 glyphs + space), implemented.
+- STA address: static 192.168.4.2/24 for the PoC because the AP has no DHCP
+  server. Replace with DHCP or a configurable address before product use.
 - Do not add Speck or MAC-layer SFO until T1-T7, T9, T10 pass on hardware.
 
 NEXT TASK

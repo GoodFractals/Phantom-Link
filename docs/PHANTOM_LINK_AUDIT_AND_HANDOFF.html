@@ -97,7 +97,7 @@
 </div>
 
 <div class="callout good">
-  <strong>Post-audit implementation (2026-11-18).</strong> A unified <code>firmware/</code> tree now exists: one <code>main.c</code>, one <code>oled.h</code>, and two CMake targets (<code>phantom_link_ap</code> with <code>IS_AP=1</code>, <code>phantom_link_sta</code> with <code>IS_AP=0</code>). Both UF2s build warning-free from that source with Pico SDK 2.3.1 on native Windows (Arm GNU Toolchain 14.2): <code>firmware/build/phantom_link_ap.uf2</code> is 670,720 bytes and <code>firmware/build/phantom_link_sta.uf2</code> is 674,816 bytes. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC joystick, buttons, input polling, codec, parser, and render path are unconditional, and Wi-Fi bring-up is non-blocking. The source implements the 49-code 3-digit Base-6 transport, exact control-token parsing, <code>HELLO</code>/<code>HELLO_ACK</code>/<code>LINK_PING</code>/<code>LINK_PONG</code>, peer learning from <code>addr</code>, a 1 s heartbeat, a 3 s timeout, and a non-blocking TX state machine. Host validation passed for the 48-glyph/180-byte font, all 49 codec values, a 21-character round-trip, <code>V</code> reachability, the corrected numeric hitboxes, and the unconditional input/UI path. <strong>No board was connected, so the hardware acceptance tests T2-T12 remain pending.</strong> Pixel-level OCR of the baked art also corrected three UI facts below: numeric <code>SOS</code> is on row 2, numeric bottom-right is the <code>LINK</code> indicator (not punctuation), and the alpha <code>WXYZ</code> group gains <code>V</code> as a fifth tap. See the corrected §5.4.
+  <strong>Post-audit implementation (2026-11-18).</strong> A unified <code>firmware/</code> tree now exists: one <code>main.c</code>, one <code>oled.h</code>, and two CMake targets (<code>phantom_link_ap</code> with <code>IS_AP=1</code>, <code>phantom_link_sta</code> with <code>IS_AP=0</code>). Both UF2s build warning-free from that source with Pico SDK 2.3.1 on native Windows (Arm GNU Toolchain 14.2): <code>firmware/build/phantom_link_ap.uf2</code> is 670,720 bytes and <code>firmware/build/phantom_link_sta.uf2</code> is 675,840 bytes. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC joystick, buttons, input polling, codec, parser, and render path are unconditional, and Wi-Fi bring-up is non-blocking. The source implements the 49-code 3-digit Base-6 transport, exact control-token parsing, <code>HELLO</code>/<code>HELLO_ACK</code>/<code>LINK_PING</code>/<code>LINK_PONG</code>, peer learning from <code>addr</code>, a 1 s heartbeat, a 3 s timeout, and a non-blocking TX state machine. Host validation passed for the 48-glyph/180-byte font, all 49 codec values, a 21-character round-trip, <code>V</code> reachability, the corrected numeric hitboxes, and the unconditional input/UI path. <strong>No board was connected, so the hardware acceptance tests T2-T12 remain pending.</strong> Pixel-level OCR of the baked art also corrected three UI facts below: numeric <code>SOS</code> is on row 2, numeric bottom-right is the <code>LINK</code> indicator (not punctuation), and the alpha <code>WXYZ</code> group gains <code>V</code> as a fifth tap. See the corrected §5.4.
 </div>
 
 <nav class="toc" aria-label="Table of contents">
@@ -230,6 +230,7 @@ foreach(tgt phantom_link_ap phantom_link_sta)
 endforeach()</code></pre>
 
 <p>This produces <code>phantom_link_ap.uf2</code> and <code>phantom_link_sta.uf2</code> from one source. Both builds run the same UI, input, codec, and parser; only the Wi-Fi bring-up differs. “Identical firmware” here means identical source and behavior, not byte-identical UF2s: the role constant is compiled in. The implementation stores it in a <code>static const bool is_ap</code> and keeps the OLED, ADC, button, codec, and parser paths outside every role conditional. A future single-binary option is to read SELECT at boot (held = AP, released = STA) and set the same runtime variable; for the PoC, two deterministic targets are easier to debug.</p>
+<p>The SDK 2.3.1 cyw43 build is compiled with <code>CYW43_NETUTILS=0</code>, so the AP has no DHCP server. The STA therefore stops DHCP and uses the fixed address <code>192.168.4.2/24</code>, gateway <code>192.168.4.1</code>. This is a PoC transport decision; a product build should add a DHCP server or make the address configurable.</p>
 
 <h3>3.3 Why the split happened, and why it must be closed now</h3>
 <p>The TX folder was built at 16:16 on 11/15; the RX folder was last edited at 17:21. All Base-6 work landed in RX after the TX snapshot. Every hour spent maintaining two trees from here will recreate the same drift. The repository must have one firmware source before the handshake work starts, or the next feature will land on one board only again.</p>
@@ -575,7 +576,7 @@ if (link_state == LINK_UP &amp;&amp; now - last_heard_ms &gt;= 3000) {
 cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, link_state == LINK_UP);</code></pre>
 
 <div class="callout good">
-  <strong>Why this order matters.</strong> The AP learns the STA’s actual DHCP address from <code>addr</code>, so you do not need the README’s “forced static IP.” The STA learns the AP’s address from the <code>HELLO_ACK</code> source, so a role swap does not require code changes. After the first handshake, data can be unicast instead of broadcast, which removes the <code>SOF_BROADCAST</code> failure mode entirely.
+  <strong>Why this order matters.</strong> The AP learns the STA’s address from <code>addr</code>, so peer discovery works with either DHCP or the PoC’s static address. The STA learns the AP’s address from the <code>HELLO_ACK</code> source, so a role swap does not require code changes. After the first handshake, data can be unicast instead of broadcast, which removes the <code>SOF_BROADCAST</code> failure mode entirely.
 </div>
 
 <h4>Send gating and status</h4>
@@ -970,7 +971,7 @@ void tx_tick(void) {
 <h3>7.1 Build both targets</h3>
 
 <div class="callout good">
-  <strong>Verified 2026-11-18 on native Windows.</strong> Both targets built warning-free from the single <code>firmware/main.c</code> after a clean configure. Outputs: <code>phantom_link_ap.uf2</code> (670,720 bytes) and <code>phantom_link_sta.uf2</code> (674,816 bytes). The small size difference reflects the Wi-Fi role branch; the OLED, ADC, button, codec, and parser paths are shared and unconditional. SHA256: <code>04011281D53C5D4CDCEBD6B246A7351B8595A98652CAD92E4A85D4BFC1B2201A</code> (AP), <code>EF3465E1A30EB3605D98FF1B6FE2CF02DE51AB8EB6B9563BE6FD098BAD7E19F1</code> (STA).
+  <strong>Verified 2026-11-18 on native Windows.</strong> Both targets built warning-free from the single <code>firmware/main.c</code> after a clean configure. Outputs: <code>phantom_link_ap.uf2</code> (670,720 bytes) and <code>phantom_link_sta.uf2</code> (675,840 bytes). The small size difference reflects the Wi-Fi role branch; the OLED, ADC, button, codec, and parser paths are shared and unconditional. SHA256: <code>04011281D53C5D4CDCEBD6B246A7351B8595A98652CAD92E4A85D4BFC1B2201A</code> (AP), <code>07685D0783E8E7F6A4209BBCBC6F8214188996A6BF320393684840DE054A4DDB</code> (STA).
 </div>
 
 <pre><code># PowerShell - exact commands used for the verified build
@@ -1071,8 +1072,8 @@ sha256sum artifacts/uf2/*.uf2 | tee artifacts/uf2/SHA256SUMS</code></pre>
   <tbody>
     <tr><td><strong>T1</strong></td><td>Single-source build</td><td>Clean <code>build/</code>; build both targets from one <code>main.c</code>.</td><td>Two UF2s produced; no duplicated source; zero warnings with <code>-Wall -Wextra</code>.</td></tr>
     <tr><td><strong>T2</strong></td><td>Dual boot UI</td><td>Flash AP to the Barebones and STA to the Jank Box 5000; power both; on each board, move the joystick and press each button.</td><td>Both show the menu; cursor moves; multi-tap types; DELETE deletes. Both boards carry the identical BOM. Splash timing is T11.</td></tr>
-    <tr><td><strong>T3</strong></td><td>Association</td><td>Boot AP, then STA; watch both serial monitors.</td><td>STA joins <code>Phantom_Link</code>; AP logs the peer; no 3 s timeout failure.</td></tr>
-    <tr><td><strong>T4</strong></td><td>Handshake</td><td>Cold boot both; watch both monitors.</td><td>STA sends <code>HELLO</code>; AP replies <code>HELLO_ACK</code>; both print <code>LINK UP</code> with the peer IP.</td></tr>
+    <tr><td><strong>T3</strong></td><td>Association</td><td>Boot AP, then STA; watch both serial monitors.</td><td>STA prints <code>STA status: joining</code>, then <code>STA status: up</code> and <code>STA IP: 192.168.4.2</code>; no <code>bad auth</code> or <code>network not found</code>.</td></tr>
+    <tr><td><strong>T4</strong></td><td>Handshake</td><td>Cold boot both; watch both monitors.</td><td>STA sends <code>HELLO</code>; AP replies <code>HELLO_ACK</code>; both print <code>LINK UP</code> with the peer IP (<code>192.168.4.1</code> on the STA, <code>192.168.4.2</code> on the AP).</td></tr>
     <tr><td><strong>T5</strong></td><td>Heartbeat / loss / recovery</td><td>Power-cycle the STA. Watch the AP during the outage; watch both after the STA boots.</td><td>AP prints <code>LINK LOST</code> within 3 s; after the STA returns, the AP prints <code>LINK UP</code> without an AP reboot and the STA prints <code>LINK UP</code>; LED follows state.</td></tr>
     <tr><td><strong>T6</strong></td><td>SOS round-trip</td><td>Select <code>SOS</code> (numeric row 2) on either board and press SELECT; watch the other serial log and OLED; repeat in the other direction.</td><td>Receiving serial prints <code>!!! SOS SIGNAL RECEIVED !!!</code> for an exact <code>SOS</code>; non-SOS messages print <code>Secret Msg: ...</code>; the other OLED shows <code>SOS</code>; no false SOS.</td></tr>
     <tr><td><strong>T7</strong></td><td>Full glyph set</td><td>Send <code>TEST 123 =+-.,?!()[]&quot;</code> from each board; watch the other serial log and OLED.</td><td>Every glyph round-trips exactly in both directions; no character becomes <code>A</code>; logs show three frames per char.</td></tr>
@@ -1138,7 +1139,8 @@ sha256sum artifacts/uf2/*.uf2 | tee artifacts/uf2/SHA256SUMS</code></pre>
 One firmware source, two build roles: one Pico hosts a private AP, the other
 joins as STA. Both run the same UI, codec, and parser. The role is a build
 flag, not a separate codebase. The STA learns the AP from HELLO_ACK; the AP
-learns the STA from the received datagram. There is no forced static IP.</code></pre>
+learns the STA from the received datagram. The SDK 2.3.1 AP build has no DHCP
+server, so the STA uses static 192.168.4.2/24 with gateway 192.168.4.1.</code></pre>
 
 <h3>Bible corrections</h3>
 <ul>
@@ -1204,13 +1206,16 @@ CURRENT STATE
   OLED/ADC/button/input path, 49-code 3-digit Base-6, exact tokens,
   HELLO/HELLO_ACK/LINK_PING/LINK_PONG, peer learning, 1 s heartbeat,
   3 s timeout, non-blocking TX, boot splash. IS_AP selects only Wi-Fi mode.
+- SDK 2.3.1 AP build has no DHCP server (CYW43_NETUTILS=0), so the STA stops
+  DHCP and uses static 192.168.4.2/24, gateway 192.168.4.1.
 - Build verified on native Windows with Pico SDK 2.3.1:
   firmware/build/phantom_link_ap.uf2 (670,720 bytes),
-  firmware/build/phantom_link_sta.uf2 (674,816 bytes), zero warnings.
+  firmware/build/phantom_link_sta.uf2 (675,840 bytes), zero warnings.
 - Host validation passed: 48-glyph/180-byte font, all 49 codec values,
   21-character round-trip, V reachable, corrected numeric hitboxes,
   unconditional input/UI path.
-- Hardware acceptance T2-T12 is pending; no board was connected.
+- First bench logs captured: AP up; STA waited for an IP. The static-address
+  fix targets that failure. Hardware acceptance T2-T12 is still pending.
 - Encryption, CRC/framing, authentication, sequence/duplicate detection,
   and MAC-layer SFO are not implemented.
 - Phantom_Link_rx/ and Phantom_Link_tx/ are rollback/reference only.
@@ -1220,6 +1225,8 @@ DECISIONS
   phantom_link_sta (IS_AP=0).
 - AP role: Barebones; STA role: Jank Box 5000. Confirmed before flashing.
 - Codec: 3-digit Base-6 over 49 codes (48 glyphs + space), implemented.
+- STA address: static 192.168.4.2/24 for the PoC because the AP has no DHCP
+  server. Replace with DHCP or a configurable address before product use.
 - Do not add Speck or MAC-layer SFO until T1-T7, T9, T10 pass on hardware.
 
 NEXT TASK

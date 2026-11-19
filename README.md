@@ -13,6 +13,7 @@ This is a handshake-first proof of concept. The link is **plaintext** right now:
 - 3-digit Base-6 transport, three symbols per character, 80 ms per symbol.
 - Exact-length `HELLO`, `HELLO_ACK`, `LINK_PING`, `LINK_PONG`, and `END` parsing.
 - Peer address learning from the received UDP packet; no hardcoded STA reply address.
+- Static STA address `192.168.4.2/24` on the AP's subnet, because the SDK AP build has no DHCP server; link-status transitions are logged.
 - 1 s heartbeat, 3 s link timeout, `LINK UP` / `LINK LOST` serial logs, and link-state LED.
 - Non-blocking transmit state machine; `cyw43_arch_poll()` runs continuously.
 - Boot splash from `boot_ui.h`, restored UI after boot, and draft/response text on separate rows.
@@ -21,7 +22,7 @@ This is a handshake-first proof of concept. The link is **plaintext** right now:
 
 **Hardware status**
 - Both UF2s build warning-free with Pico SDK 2.3.1 on native Windows.
-- `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (674,816 bytes) were produced and inspected with `picotool`.
+- `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (675,840 bytes) were produced and inspected with `picotool`.
 - **No board was connected during the build session.** Boot, typing/rendering on both boards, handshake, timeout/recovery, and both serial logs still need hardware acceptance testing. Both units must be wired to the same BOM before running the matrix. See the test matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
 
 **Not implemented yet**
@@ -38,7 +39,7 @@ The CYW43439/Pico SDK supports AP and STA roles, not ad-hoc/IBSS. Exactly one bo
 - **TX/RX** is what a packet is doing.
 - Both roles compile the same transceiver, UI, input, codec, and parser path. `IS_AP` selects only the Wi-Fi role; both boards can type, send, receive, decode, and render.
 
-One `firmware/main.c` is compiled twice. `phantom_link_ap` hosts the private network; `phantom_link_sta` joins it and sends the first `HELLO`. The STA learns the AP address from `HELLO_ACK`; the AP learns the STA address from the received datagram. There is no forced static IP. Wi-Fi bring-up is non-blocking: the UI and input loop start before a STA join completes, and a failed join retries in the main loop.
+One `firmware/main.c` is compiled twice. `phantom_link_ap` hosts the private network; `phantom_link_sta` joins it and sends the first `HELLO`. The STA learns the AP address from `HELLO_ACK`; the AP learns the STA address from the received datagram. The AP build in this SDK has no DHCP server, so the STA uses the fixed address `192.168.4.2` on the AP's `192.168.4.0/24` subnet; DHCP is stopped at boot. Wi-Fi bring-up is non-blocking: the UI and input loop start before a STA join completes, and a failed join retries in the main loop.
 
 Network defaults:
 
@@ -48,7 +49,7 @@ Network defaults:
 | Password | `12345678` |
 | UDP port | `4444` |
 | AP address | `192.168.4.1` |
-| STA address | DHCP |
+| STA address | `192.168.4.2` (static; AP has no DHCP server) |
 
 The SSID/password are development defaults, not a security model. Change them before using the device outside a bench.
 
@@ -134,9 +135,12 @@ UDP listening on 4444
 
 ```text
 --- PHANTOM LINK STA ---
+STA static IP: 192.168.4.2 (DHCP disabled)
 STA connecting to Phantom_Link...
 STA join continues in the main loop
-STA IP: 192.168.4.x
+STA status: joining (1)
+STA status: up (3)
+STA IP: 192.168.4.2
 TX HELLO
 RX HELLO_ACK
 LINK UP (HELLO_ACK) peer=192.168.4.1:4444
