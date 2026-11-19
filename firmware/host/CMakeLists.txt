@@ -20,6 +20,15 @@ target_include_directories(test_spec PRIVATE "${PROTO_DIR}")
 target_compile_options(test_spec PRIVATE ${WARNINGS})
 add_test(NAME spec COMMAND test_spec)
 
+add_library(phantom_proto STATIC "${PROTO_DIR}/proto_frame.c")
+target_include_directories(phantom_proto PUBLIC "${PROTO_DIR}")
+target_compile_options(phantom_proto PRIVATE ${WARNINGS})
+
+add_executable(test_frame tests/test_frame.c)
+target_link_libraries(test_frame PRIVATE phantom_proto)
+target_compile_options(test_frame PRIVATE ${WARNINGS})
+add_test(NAME frame COMMAND test_frame)
+
 add_executable(test_banner tests/test_banner.c)
 target_include_directories(test_banner PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")
 target_compile_definitions(test_banner PRIVATE PHANTOM_BUILD_HASH="testhash")
