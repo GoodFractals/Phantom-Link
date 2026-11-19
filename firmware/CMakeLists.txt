@@ -19,7 +19,7 @@ string(SUBSTRING "${PHANTOM_SOURCE_HASH}" 0 8 PHANTOM_BUILD_HASH)
 pico_sdk_init()
 
 function(add_phantom_target target_name is_ap)
-    add_executable(${target_name} main.c)
+    add_executable(${target_name} main.c proto/proto_frame.c)
 
     target_compile_definitions(${target_name} PRIVATE
         IS_AP=${is_ap}
@@ -30,6 +30,7 @@ function(add_phantom_target target_name is_ap)
 
     target_include_directories(${target_name} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/proto
     )
 
     target_link_libraries(${target_name}

@@ -33,6 +33,7 @@
 #include "numeric_ui.h"
 #include "boot_ui.h"
 #include "banner.h"
+#include "proto/proto_frame.h"
 
 #ifndef IS_AP
 #define IS_AP 1
@@ -79,16 +80,6 @@ static const bool is_ap = (IS_AP != 0);
 static const char GLYPHS[] =
     " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789=+-.,?!()[]\"";
 _Static_assert(sizeof(GLYPHS) - 1 == 49, "transport alphabet must have 49 codes");
-
-static const char *const SYMBOLS[6] = {
-    "PING", "ACK", "SYNC", "PONG", "DATA", "READY"
-};
-
-#define TOK_HELLO     "HELLO"
-#define TOK_HELLO_ACK "HELLO_ACK"
-#define TOK_LINK_PING "LINK_PING"
-#define TOK_LINK_PONG "LINK_PONG"
-#define TOK_END       "END"
 
 // --- UI layout ---------------------------------------------------------------
 typedef struct { int x1, y1, x2, y2; } BoxRect;
@@ -157,6 +148,13 @@ static uint32_t last_ping_ms = 0;
 static bool manual_ping = false;
 static uint32_t manual_ping_ms = 0;
 
+// --- Frame counters -----------------------------------------------------------
+// Ticket 20 turns these into a STATUS dump with persistence. For now they are
+// live counters that make rejections visible without hiding them in a log.
+static uint32_t rx_bad_frames = 0;
+static uint32_t rx_unknown_type = 0;
+static uint32_t rx_bad_payload = 0;
+
 // --- Transmit state machine ---------------------------------------------------
 typedef enum { TX_IDLE = 0, TX_DATA, TX_END } tx_phase_t;
 
@@ -185,39 +183,98 @@ static char glyph_from_code(int code) {
 }
 
 // --- UDP send / peer learning -------------------------------------------------
-static err_t send_to(const ip_addr_t *dst, u16_t port, const char *text) {
+static const char *frame_type_name(uint8_t type) {
+    switch (type) {
+    case PROTO_TYPE_HELLO: return "HELLO";
+    case PROTO_TYPE_HELLO_ACK: return "HELLO_ACK";
+    case PROTO_TYPE_DATA: return "DATA";
+    case PROTO_TYPE_ACK: return "ACK";
+    case PROTO_TYPE_PING: return "PING";
+    case PROTO_TYPE_PONG: return "PONG";
+    case PROTO_TYPE_BYE: return "BYE";
+    case PROTO_TYPE_SFO: return "SFO";
+    case PROTO_TYPE_ERROR: return "ERROR";
+    default: return "UNKNOWN";
+    }
+}
+
+static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
+                           uint8_t flags, const uint8_t *payload,
+                           uint8_t payload_len) {
+    uint8_t buf[PROTO_MAX_FRAME_LEN];
+    proto_frame_view_t frame;
+    size_t len = 0;
+    proto_status_t status;
+
     if (!upcb || !dst) return ERR_VAL;
 
-    size_t len = strlen(text);
+    frame.version = (uint8_t)PROTO_VERSION;
+    frame.type = type;
+    frame.flags = flags;
+    // Session identity and sequencing arrive in ticket 05. Until then every
+    // frame carries zero, which is still a valid frame on the wire.
+    frame.session_id = 0;
+    frame.seq = 0;
+    frame.ack = 0;
+    frame.payload_len = payload_len;
+    frame.payload = payload;
+
+    status = proto_frame_encode(buf, sizeof buf, &frame, &len);
+    if (status == PROTO_OK) status = proto_frame_put_crc(buf, len);
+    if (status != PROTO_OK) {
+        printf("TX encode failed: %s\n", proto_status_str(status));
+        return ERR_VAL;
+    }
+
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, (u16_t)len, PBUF_RAM);
     if (!p) {
-        printf("send: pbuf_alloc failed for '%s'\n", text);
+        printf("TX type=%s: pbuf_alloc failed\n", frame_type_name(type));
         return ERR_MEM;
     }
 
-    memcpy(p->payload, text, len);
+    memcpy(p->payload, buf, len);
     err_t err = udp_sendto(upcb, p, dst, port);
     pbuf_free(p);
 
     if (err != ERR_OK) {
-        printf("send '%s' failed: %d\n", text, (int)err);
+        printf("TX type=%s len=%u failed: %d\n", frame_type_name(type),
+               (unsigned)payload_len, (int)err);
+    } else {
+        printf("TX type=%s seq=%u len=%u\n", frame_type_name(type),
+               (unsigned)frame.seq, (unsigned)payload_len);
     }
     return err;
 }
 
-static bool send_control(const char *token) {
+static bool send_control_frame(uint8_t type) {
     if (!upcb) return false;
 
     if (peer_valid) {
-        return send_to(&peer_ip, peer_port, token) == ERR_OK;
+        return send_frame_to(&peer_ip, peer_port, type, 0, NULL, 0) == ERR_OK;
     }
 
     if (!is_ap) {
         // The STA knows the AP's default address before HELLO_ACK arrives.
-        return send_to(&ap_addr, UDP_PORT, token) == ERR_OK;
+        return send_frame_to(&ap_addr, UDP_PORT, type, 0, NULL, 0) == ERR_OK;
     }
 
-    printf("no peer yet; cannot send %s\n", token);
+    printf("no peer yet; cannot send %s\n", frame_type_name(type));
+    return false;
+}
+
+static bool send_data_frame(const uint8_t *payload, uint8_t payload_len,
+                            uint8_t flags) {
+    if (peer_valid) {
+        return send_frame_to(&peer_ip, peer_port, PROTO_TYPE_DATA, flags,
+                             payload, payload_len) == ERR_OK;
+    }
+
+    if (!is_ap) {
+        return send_frame_to(&ap_addr, UDP_PORT, PROTO_TYPE_DATA, flags,
+                             payload, payload_len) == ERR_OK;
+    }
+
+    printf("no peer yet; cannot send DATA\n");
     return false;
 }
 
@@ -274,22 +331,6 @@ static void set_link_down(const char *why) {
 }
 
 // --- Receive path -------------------------------------------------------------
-static bool pkt_eq(const struct pbuf *p, const char *token) {
-    size_t len = strlen(token);
-    if (len >= 16 || p->tot_len != len) return false;
-
-    char buf[16];
-    if (pbuf_copy_partial(p, buf, (u16_t)len, 0) != (u16_t)len) return false;
-    return memcmp(buf, token, len) == 0;
-}
-
-static int symbol_id(const struct pbuf *p) {
-    for (int i = 0; i < 6; i++) {
-        if (pkt_eq(p, SYMBOLS[i])) return i;
-    }
-    return -1;
-}
-
 static void reset_rx_accumulator(void) {
     sym_acc = 0;
     sym_count = 0;
@@ -341,28 +382,58 @@ static void handle_symbol(int id) {
     reset_rx_accumulator();
 }
 
-static void handle_control(const char *token, const ip_addr_t *addr, u16_t port) {
+static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
+                         u16_t port) {
     note_peer(addr, port);
 
-    if (strcmp(token, TOK_HELLO) == 0) {
-        printf("RX HELLO\n");
-        if (send_control(TOK_HELLO_ACK)) {
+    printf("RX type=%s seq=%u len=%u\n", frame_type_name(frame->type),
+           (unsigned)frame->seq, (unsigned)frame->payload_len);
+
+    switch (frame->type) {
+    case PROTO_TYPE_HELLO:
+        if (send_control_frame(PROTO_TYPE_HELLO_ACK)) {
             set_link_up("HELLO");
         } else {
             printf("HELLO_ACK send failed; link stays down\n");
         }
-    } else if (strcmp(token, TOK_HELLO_ACK) == 0) {
-        printf("RX HELLO_ACK\n");
+        break;
+
+    case PROTO_TYPE_HELLO_ACK:
         set_link_up("HELLO_ACK");
-    } else if (strcmp(token, TOK_LINK_PING) == 0) {
-        bool pong_sent = send_control(TOK_LINK_PONG);
-        if (link_state != LINK_UP && pong_sent) set_link_up("LINK_PING");
-    } else if (strcmp(token, TOK_LINK_PONG) == 0) {
+        break;
+
+    case PROTO_TYPE_PING: {
+        bool pong_sent = send_control_frame(PROTO_TYPE_PONG);
+        if (link_state != LINK_UP && pong_sent) set_link_up("PING");
+        break;
+    }
+
+    case PROTO_TYPE_PONG:
         if (manual_ping) {
             printf("RTT: %u ms\n", (unsigned)(now_ms() - manual_ping_ms));
             manual_ping = false;
         }
-        if (link_state != LINK_UP) set_link_up("LINK_PONG");
+        if (link_state != LINK_UP) set_link_up("PONG");
+        break;
+
+    case PROTO_TYPE_DATA:
+        if (link_state != LINK_UP) break;
+        if (frame->payload_len == 1 && frame->payload[0] < 6) {
+            handle_symbol(frame->payload[0]);
+        } else if (frame->payload_len == 0 &&
+                   (frame->flags & PROTO_FLAG_FINAL)) {
+            finish_rx_message();
+        } else {
+            rx_bad_payload++;
+            printf("RX DATA rejected: len=%u flags=0x%02x\n",
+                   (unsigned)frame->payload_len, (unsigned)frame->flags);
+        }
+        break;
+
+    default:
+        printf("RX ignored type=%s (not handled yet)\n",
+               frame_type_name(frame->type));
+        break;
     }
 }
 
@@ -373,32 +444,44 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
 
     if (!p) return;
 
-    if (pkt_eq(p, TOK_HELLO)) {
-        handle_control(TOK_HELLO, addr, port);
-    } else if (pkt_eq(p, TOK_HELLO_ACK)) {
-        handle_control(TOK_HELLO_ACK, addr, port);
-    } else if (pkt_eq(p, TOK_LINK_PING)) {
-        handle_control(TOK_LINK_PING, addr, port);
-    } else if (pkt_eq(p, TOK_LINK_PONG)) {
-        handle_control(TOK_LINK_PONG, addr, port);
-    } else if (pkt_eq(p, TOK_END)) {
-        if (link_state == LINK_UP) {
-            note_peer(addr, port);
-            finish_rx_message();
-        }
-    } else {
-        int id = symbol_id(p);
-        if (id >= 0) {
-            if (link_state == LINK_UP) {
-                note_peer(addr, port);
-                handle_symbol(id);
-            }
-        } else {
-            printf("RX unknown packet (%u bytes)\n", (unsigned)p->tot_len);
-        }
+    uint16_t wire_len = p->tot_len;
+    if (wire_len > PROTO_MAX_FRAME_LEN) {
+        rx_bad_frames++;
+        printf("RX oversized frame (%u bytes)\n", (unsigned)wire_len);
+        pbuf_free(p);
+        return;
     }
 
+    uint8_t buf[PROTO_MAX_FRAME_LEN];
+    if (pbuf_copy_partial(p, buf, wire_len, 0) != wire_len) {
+        rx_bad_frames++;
+        printf("RX truncated read (%u bytes)\n", (unsigned)wire_len);
+        pbuf_free(p);
+        return;
+    }
     pbuf_free(p);
+
+    proto_status_t status = proto_frame_check_crc(buf, wire_len);
+    if (status != PROTO_OK) {
+        if (status == PROTO_ERR_TYPE) {
+            rx_unknown_type++;
+        } else {
+            rx_bad_frames++;
+        }
+        printf("RX rejected frame: %s (%u bytes)\n", proto_status_str(status),
+               (unsigned)wire_len);
+        return;
+    }
+
+    proto_frame_view_t frame;
+    status = proto_frame_decode(buf, wire_len, &frame);
+    if (status != PROTO_OK) {
+        rx_bad_frames++;
+        printf("RX decode failed after CRC: %s\n", proto_status_str(status));
+        return;
+    }
+
+    handle_frame(&frame, addr, port);
 }
 
 // --- Transmit path ------------------------------------------------------------
@@ -455,20 +538,21 @@ static void tx_tick(uint32_t now) {
 
         int divisor = (tx_digit == 0) ? 36 : (tx_digit == 1) ? 6 : 1;
         int symbol = (code / divisor) % 6;
+        uint8_t sym = (uint8_t)symbol;
 
-        if (!send_control(SYMBOLS[symbol])) {
+        if (!send_data_frame(&sym, 1, 0)) {
             tx_next_ms = now + SYMBOL_INTERVAL_MS;
             return;
         }
 
-        printf("TX %c -> %s\n", tx_buf[tx_pos], SYMBOLS[symbol]);
+        printf("TX glyph '%c' sym=%d\n", tx_buf[tx_pos], symbol);
         tx_next_ms = now + SYMBOL_INTERVAL_MS;
         if (++tx_digit == 3) {
             tx_digit = 0;
             if (++tx_pos >= tx_len) tx_phase = TX_END;
         }
     } else if (tx_phase == TX_END) {
-        if (!send_control(TOK_END)) {
+        if (!send_data_frame(NULL, 0, PROTO_FLAG_FINAL)) {
             tx_next_ms = now + SYMBOL_INTERVAL_MS;
             return;
         }
@@ -617,12 +701,12 @@ static void request_ping(void) {
         printf("NO LINK\n");
         return;
     }
-    if (send_control(TOK_LINK_PING)) {
+    if (send_control_frame(PROTO_TYPE_PING)) {
         manual_ping = true;
         manual_ping_ms = now_ms();
-        printf("LINK_PING sent\n");
+        printf("PING sent\n");
     } else {
-        printf("LINK_PING send failed\n");
+        printf("PING send failed\n");
     }
 }
 
@@ -902,8 +986,7 @@ static void net_tick(uint32_t now) {
         if (!is_ap && wifi_ready &&
             (uint32_t)(now - last_hello_ms) >= HELLO_INTERVAL_MS) {
             last_hello_ms = now;
-            printf("TX HELLO\n");
-            send_control(TOK_HELLO);
+            send_control_frame(PROTO_TYPE_HELLO);
         }
         return;
     }
@@ -920,7 +1003,7 @@ static void net_tick(uint32_t now) {
 
     if ((uint32_t)(now - last_ping_ms) >= HEARTBEAT_MS) {
         last_ping_ms = now;
-        send_control(TOK_LINK_PING);
+        send_control_frame(PROTO_TYPE_PING);
     }
 }
 

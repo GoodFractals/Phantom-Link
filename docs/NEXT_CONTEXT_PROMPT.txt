@@ -36,20 +36,28 @@ CURRENT STATE
 - Numeric-page HUD: four RSSI bars on the STA, link square beside LINK. The
   AP has no per-client RSSI, so its signal cell stays empty until the STA
   relays a reading. BAT: is reserved and has no sense path.
-- 49-code 3-digit Base-6, HELLO/HELLO_ACK/LINK_PING/LINK_PONG, peer
-  learning, 1 s heartbeat, 3 s timeout, non-blocking TX, boot splash.
-- Handshake and bidirectional typed messaging are proven on hardware. The
-  full T2-T12 matrix and the current HUD build still need a hardware run.
-- Last verified build: Pico SDK 2.3.1, zero warnings.
-  phantom_link_ap.uf2 670,720 bytes
-  SHA256 E0C1C9CE3849B647B1865EF106C3F1004341D2E7EC5C3D349F0EDDF7EDD7D1E9
-  phantom_link_sta.uf2 677,376 bytes
-  SHA256 D4CE0FB79BF9A82A4ACE21ACB2E099981BB626781348F790A5E82AAC9B1C5EC7
+- 49-code 3-digit Base-6 character encoding inside typed frames: 18-byte
+  header, CRC32 auth field, HELLO/HELLO_ACK/PING/PONG/DATA, FINAL ends a
+  message. Peer learning, 1 s heartbeat, 3 s timeout, non-blocking TX,
+  boot splash.
+- The token build reached LINK UP and sent typed messages on hardware. The
+  framed build (tickets 03-04) has not been flashed; the full T2-T12 matrix
+  and the HUD build still need a hardware run.
+- Last verified build: Pico SDK 2.3.1, zero warnings under -Werror.
+  main.c build hash 6d8d2bcb
+  phantom_link_ap.uf2 672,768 bytes
+  SHA256 313FC15D00D44A8C96B9513CF3C1309F286F6DBCF0AF046217684AE4FDDE55FD
+  phantom_link_sta.uf2 678,912 bytes
+  SHA256 A2F61C9057AEE731616603545A7F6F4E92B6C8BE49D4DD8AFE97C3888E0F8A37
   Rebuild rather than trusting these hashes; they move with every commit.
 - Host validation: python firmware/tests/validate_assets.py
   Expected final line: HOST VALIDATION: PASS.
-- Not implemented: framing/CRC, encryption, authentication, replay
-  protection, SFO, watchdog, persistence. These are the backlog.
+  Protocol tests: cmake -S firmware/host -B firmware/host/build -G Ninja
+  then cmake --build firmware/host/build and
+  ctest --test-dir firmware/host/build --output-on-failure.
+- Not implemented: session IDs, sequence numbers, duplicate suppression,
+  ACK/retransmit, encryption, authentication, replay protection, SFO,
+  watchdog, persistence. These are the backlog.
 - Phantom_Link_rx/ and Phantom_Link_tx/ are rollback/reference only.
 
 DECISIONS (see docs/adr/)
@@ -63,8 +71,9 @@ DECISIONS (see docs/adr/)
 NEXT TASK
 Work the ticket frontier. Read .scratch/phantom-link-v1/issues/ and pick the
 lowest-numbered open ticket whose blockers are all done.
-- 01 (host harness, -Werror, regression checklist) and 02 (boot banner) are
-  both unblocked.
+- 01, 02, and 03 are done and committed.
+- 04 is code-complete; its two hardware criteria close with ticket 09.
+- 05 (session ID, sequence, duplicates) is next and needs no hardware.
 - 22 (untethered power rig) is unblocked but needs hands on hardware.
 - Do not start a later ticket to "get ahead". The gates exist because crypto
   debugged on unstable framing is how projects die.

@@ -2,16 +2,16 @@
 
 Phantom Link is a standalone, bidirectional wireless link built from two Raspberry Pi Pico 2 W boards. Both boards carry the same BOM: an SH1106 OLED, a PSP-1000 analog joystick on GP26/GP27, and SELECT/DELETE/BACK buttons on GP14/GP15/GP12. One board hosts a private Wi-Fi network; the other joins it. No router, access point, or phone is required.
 
-This is a handshake-first proof of concept. The link is **plaintext** right now: the firmware implements the OLED UI, input, character codec, UDP transport, peer learning, heartbeat, and timeout. Encryption, framing/CRC, authentication, replay protection, and true MAC-layer steganography are **planned but not implemented**. The project is presented as an embedded-systems prototype, not as a finished secure communicator.
+This is a handshake-first proof of concept. The link is **plaintext and unauthenticated** right now: the firmware implements the OLED UI, input, character codec, UDP transport, typed frames with CRC32, peer learning, heartbeat, and timeout. Encryption, authentication, replay protection, and true MAC-layer steganography are **planned but not implemented**. CRC32 catches corruption; it is not a security check. The project is presented as an embedded-systems prototype, not as a finished secure communicator.
 
-## Status (2026-11-18)
+## Status (2026-11-19)
 
 **Working in source and host-verified**
 - 128×64 SH1106 SPI driver with a 1024-byte framebuffer and custom variable-width font.
 - Alpha and Numeric UI pages, joystick navigation, SELECT/DELETE edge handling, and multi-tap text entry.
 - Full 49-character transport alphabet: 48 drawable glyphs plus space.
-- 3-digit Base-6 transport, three symbols per character, 80 ms per symbol.
-- Exact-length `HELLO`, `HELLO_ACK`, `LINK_PING`, `LINK_PONG`, and `END` parsing.
+- 3-digit Base-6 character encoding, three symbols per character, 80 ms per symbol.
+- Typed frames on the wire: 18-byte header, 0–64 byte payload, 8-byte auth field carrying a CRC32. `HELLO`, `HELLO_ACK`, `PING`, `PONG`, and `DATA` use their assigned type codes; `DATA` with `FINAL` ends a message.
 - Peer address learning from the received UDP packet; no hardcoded STA reply address.
 - Static STA address `192.168.4.2/24` on the AP's subnet, because the SDK AP build has no DHCP server; link-status transitions are logged.
 - 1 s heartbeat, 3 s link timeout, `LINK UP` / `LINK LOST` serial logs, and link-state LED.
@@ -19,16 +19,16 @@ This is a handshake-first proof of concept. The link is **plaintext** right now:
 - Boot splash from `boot_ui.h`, restored UI after boot, and draft/response text on separate rows.
 - Runtime status HUD on the numeric page: four-bar RSSI on the STA and a filled/hollow link bullet beside `LINK`. The battery cell is reserved but has no sensor yet.
 - Two build targets from one `main.c`: `phantom_link_ap` (`IS_AP=1`) and `phantom_link_sta` (`IS_AP=0`). `IS_AP` selects only the Wi-Fi role; the OLED/input path is unconditional in both.
-- Host validation: font table, all 49 codec values, a 21-character round-trip, `V` reachability, the corrected numeric hitboxes, and the unconditional UI/input path pass.
+- Host validation: font table, all 49 codec values, a 21-character round-trip, `V` reachability, the corrected numeric hitboxes, and the unconditional UI/input path pass. The frame codec is covered by `ctest`: every payload length, every truncated prefix, 100k fuzz buffers, and per-bit tamper rejection.
 
 **Hardware status**
-- Both UF2s build warning-free with Pico SDK 2.3.1 on native Windows.
-- `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (677,376 bytes) were produced and inspected with `picotool`.
-- **No board was connected during the build session.** Boot, typing/rendering on both boards, handshake, timeout/recovery, and both serial logs still need hardware acceptance testing. Both units must be wired to the same BOM before running the matrix. See the test matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
+- Both UF2s build warning-free with Pico SDK 2.3.1 on native Windows, with `-Wall -Wextra -Werror`.
+- `firmware/build/phantom_link_ap.uf2` (672,768 bytes, SHA256 `313FC15D00D44A8C96B9513CF3C1309F286F6DBCF0AF046217684AE4FDDE55FD`) and `firmware/build/phantom_link_sta.uf2` (678,912 bytes, SHA256 `A2F61C9057AEE731616603545A7F6F4E92B6C8BE49D4DD8AFE97C3888E0F8A37`) are the current framed builds.
+- **No board was connected during the build session.** The framed build still needs the T2–T12 matrix, including handshake and bidirectional messaging, on both boards. See `docs/REGRESSION.md` and the audit matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
 
 **Not implemented yet**
 - Encryption (Speck128/128 CTR + CMAC is planned), key exchange, authentication, replay protection.
-- CRC, message IDs, sequence numbers, duplicate detection, retransmission.
+- Session IDs, sequence numbers, duplicate detection, ACK, retransmission.
 - MAC-layer StegoFrameOrder; the current SFO is an application-layer packet-name PoC.
 - Battery monitoring (power-bank LEDs are the gauge), enclosure, range/power measurements, antenna modification.
 
@@ -56,23 +56,38 @@ The SSID/password are development defaults, not a security model. Change them be
 
 ## Protocol
 
-Control packets are exact strings, checked before symbol decoding:
+Every UDP datagram is one binary frame. The layout is fixed so Phase 2 can replace the CRC field with a MAC without changing the wire size:
 
-| Token | Direction | Meaning |
+| Offset | Size | Field |
 |---|---|---|
-| `HELLO` | STA → AP | Request a link; AP learns the peer address |
-| `HELLO_ACK` | AP → STA | Accept; STA learns the AP address |
-| `LINK_PING` | Both | 1 s heartbeat |
-| `LINK_PONG` | Both | Heartbeat reply |
-| `END` | Sender → receiver | Finish the current message |
+| 0 | 2 | magic `B`, `C` |
+| 2 | 1 | version (1) |
+| 3 | 1 | type |
+| 4 | 1 | flags |
+| 5 | 1 | payload length (0–64) |
+| 6 | 4 | session ID (zero until ticket 05) |
+| 10 | 4 | sequence (zero until ticket 05) |
+| 14 | 4 | ACK (zero until ticket 06) |
+| 18 | n | payload |
+| 18+n | 8 | auth field: CRC32 then four reserved zero bytes |
 
-Data symbols are `PING`, `ACK`, `SYNC`, `PONG`, `DATA`, and `READY`, representing Base-6 digits 0–5. A character is `d0*36 + d1*6 + d2` over the alphabet:
+| Type | Code | Direction | Meaning |
+|---|---:|---|---|
+| `HELLO` | 1 | STA → AP | Request a link; AP learns the peer address |
+| `HELLO_ACK` | 2 | AP → STA | Accept; STA learns the AP address |
+| `DATA` | 3 | Both | One Base-6 symbol, or zero-byte payload with `FINAL` to end a message |
+| `PING` | 5 | Both | 1 s heartbeat |
+| `PONG` | 6 | Both | Heartbeat reply |
+
+`ACK`, `BYE`, `SFO`, and `ERROR` have assigned codes but no behaviour yet. A frame with an unknown type is dropped and counted. A structure or CRC failure is logged with its status and counted separately.
+
+Data symbols are the Base-6 digits 0–5, sent one per `DATA` frame. A character is `d0*36 + d1*6 + d2` over the alphabet:
 
 ```text
 " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789=+-.,?!()[]\""
 ```
 
-There is no encryption, CRC, or sequence header yet. A lost symbol can desynchronize a message; the receiver resets the three-symbol accumulator after a 500 ms gap and drops a partial final glyph at `END`.
+CRC32 covers the header and payload. It catches corruption, not an attacker: there is no encryption, authentication, or sequence check yet. A lost symbol can still desynchronize a message; the receiver resets the three-symbol accumulator after a 500 ms gap and drops a partial final glyph at `FINAL`.
 
 ## Hardware
 
@@ -129,21 +144,21 @@ For the PoC, **Barebones = AP (host)** and **Jank Box 5000 = STA (client)**. Bot
 Open one serial monitor per board at 115200 8N1. Expected boot banners:
 
 ```text
---- PHANTOM LINK AP ---
+phantom-link v1 cc5116ad AP
 AP active: 192.168.4.1
 UDP listening on 4444
 ```
 
 ```text
---- PHANTOM LINK STA ---
+phantom-link v1 cc5116ad STA
 STA static IP: 192.168.4.2 (DHCP disabled)
 STA connecting to Phantom_Link...
 STA join continues in the main loop
 STA status: joining (1)
 STA status: up (3)
 STA IP: 192.168.4.2
-TX HELLO
-RX HELLO_ACK
+TX type=HELLO seq=0 len=0
+RX type=HELLO_ACK seq=0 len=0
 LINK UP (HELLO_ACK) peer=192.168.4.1:4444
 ```
 
@@ -162,12 +177,15 @@ Use one window per board and press `Ctrl+C` to stop. PuTTY or Tera Term with log
 
 ```text
 firmware/            Unified AP/STA firmware and build definition
-  main.c             UI, input, codec, UDP link, handshake, timeout
+  main.c             UI, input, codec, UDP link, typed frames, timeout
   oled.h             SH1106 driver and framebuffer helpers
   font_ui.h          48-glyph variable-width font
   alpha_ui.h         1024-byte Alpha page art
   numeric_ui.h       1024-byte Numeric page art
   boot_ui.h          1024-byte boot splash art
+  banner.h           Version and build-hash boot banner
+  proto/             Frame spec, encode/decode, CRC32 (no SDK dependency)
+  host/              Host CMake project and ctest suites for protocol code
   CMakeLists.txt     phantom_link_ap + phantom_link_sta targets
   tests/             Host-side font/codec/UI/role validation (no SDK needed)
 tools/               Auto-reconnecting serial logger for boot captures
@@ -226,9 +244,9 @@ The pre-audit RX tree is retained for rollback. The unified firmware is the acti
 - [x] Unify both roles into one firmware source with two build targets.
 - [x] Make OLED/input initialization unconditional; `IS_AP` selects only the Wi-Fi role.
 - [x] Add `HELLO`/`HELLO_ACK`, peer learning, heartbeat, timeout, and link-state LED.
-- [x] Add non-blocking transmit and exact-length control-token parsing.
+- [x] Add non-blocking transmit and typed frames with CRC32.
 - [ ] Pass the hardware acceptance matrix: T2–T12 in the audit.
-- [ ] Add message IDs, sequence numbers, CRC/framing, duplicate detection.
+- [ ] Add session IDs, sequence numbers, duplicate detection, ACK, and retransmission.
 - [ ] Add Speck encryption and key exchange.
 - [ ] Implement MAC-layer StegoFrameOrder (the current SFO is application-layer).
 - [ ] Run untethered from a zip-tied 2000 mAh power bank and measure runtime.

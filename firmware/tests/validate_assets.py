@@ -152,7 +152,12 @@ def main() -> int:
     assert "group_index = 13" not in main_text
     print("numeric UI: SOS [2][1], SPACE [3][1], LINK [3][2] indicator")
 
-    assert "if (send_control(TOK_HELLO_ACK))" in main_text
+    assert "if (send_control_frame(PROTO_TYPE_HELLO_ACK))" in main_text
+    assert "proto_frame_check_crc" in main_text
+    assert "send_data_frame" in main_text
+    assert "pkt_eq" not in main_text
+    assert "TOK_HELLO" not in main_text
+    assert "proto/proto_frame.c" in cmake_text
     assert "RTT timeout" in main_text
     assert "phantom_link_ap" in cmake_text and "phantom_link_sta" in cmake_text
     assert "IS_AP=1" in cmake_text or "IS_AP=${is_ap}" in cmake_text
