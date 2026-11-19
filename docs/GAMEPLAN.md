@@ -201,7 +201,7 @@ Exit gate: the link is reliable and observable, and `main.c` no longer parses ra
 
 | # | Step | DoD |
 |---|---|---|
-| 2.1 | Decide cipher (§12) | Decision recorded in `docs/DECISIONS.md` with rationale |
+| 2.1 | Decide cipher (§12) | Decision recorded in `docs/adr/0001-speck128-128-ctr-cmac.md` |
 | 2.2 | Implement cipher + KDF + MAC with published test vectors | Vector tests pass on host and on-device self-test |
 | 2.3 | Add key confirmation to `HELLO`/`HELLO_ACK` | A peer with the wrong PSK reaches `AUTH FAILED`, never `LINK UP` |
 | 2.4 | Encrypt `DATA`, verify MAC before decrypt | Serial logs show ciphertext length, never plaintext of user messages |
@@ -388,12 +388,13 @@ Until then, "two people, two boards, one link" is the security model, and it is 
 
 **Decided**
 
-1. **Cipher.** Speck128/128 in CTR + CMAC. `proto_crypto` keeps a cipher-agnostic interface so a ChaCha20-Poly1305 AEAD slot can replace it without touching the session layer.
-2. **SFO role.** Telemetry only in v1. The key-hint variant stays behind `-DSFO_KEY_HINT=1` and off by default.
-3. **Battery sense.** None. Each unit runs from a 2000 mAh power bank; its LEDs are the charge gauge. Software cannot sense cell state through a regulated 5 V output.
+1. **Cipher.** Speck128/128 in CTR + CMAC. `proto_crypto` keeps a cipher-agnostic interface so a ChaCha20-Poly1305 AEAD slot can replace it without touching the session layer. Recorded in `docs/adr/0001-speck128-128-ctr-cmac.md`.
+2. **SFO role.** Telemetry only in v1. The key-hint variant stays behind `-DSFO_KEY_HINT=1` and off by default. Recorded in `docs/adr/0002-sfo-is-an-application-layer-telemetry-channel.md`.
+3. **Battery sense.** None. Each unit runs from a 2000 mAh power bank; its LEDs are the charge gauge. Software cannot sense cell state through a regulated 5 V output. Recorded in `docs/adr/0003-no-battery-sense-hardware.md`.
 4. **Enclosure.** None. Power bank and breadboard are zip-tied together as a jank box.
+5. **Membership.** Strictly two-party; physical possession is the security model. Recorded in `docs/adr/0004-two-party-membership-is-physical-possession.md`.
 
 **Still open**
 
-5. **PSK provisioning.** A compiled constant is simplest and adequate for a demo, but every build ships the same key. The alternative is a first-boot pairing step where one board displays six digits and the other accepts them on the joystick. Recommendation: compiled constant for v1, documented as a limitation, pairing deferred to v2.
-6. **Primary demo distance.** 1 m, 5 m, and 15 m are the SFO measurement points. Pick the one that goes in the video.
+6. **PSK provisioning.** A compiled constant is simplest and adequate for a demo, but every build ships the same key. The alternative is a first-boot pairing step where one board displays six digits and the other accepts them on the joystick. Recommendation: compiled constant for v1, documented as a limitation, pairing deferred to v2.
+7. **Primary demo distance.** 1 m, 5 m, and 15 m are the SFO measurement points. Pick the one that goes in the video.

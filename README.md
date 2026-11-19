@@ -171,7 +171,9 @@ firmware/            Unified AP/STA firmware and build definition
   CMakeLists.txt     phantom_link_ap + phantom_link_sta targets
   tests/             Host-side font/codec/UI/role validation (no SDK needed)
 tools/               Auto-reconnecting serial logger for boot captures
-docs/                Audit, remediation plan, test matrix, AI handoff
+docs/                Audit, gameplan, ADRs, agent config
+docs/adr/            Locked architecture decisions
+.scratch/            Local issue tracker: specs and tickets per feature
 Phantom_Link_rx/     Original RX firmware, kept as rollback reference
 Phantom_Link_tx/     Original TX tree, stale pre-Base-6 fork
 ```
@@ -183,6 +185,9 @@ The pre-audit RX tree is retained for rollback. The unified firmware is the acti
 - `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` — complete forensic audit, defect register, protocol/UI designs, build order, acceptance matrix, and handoff packet.
 - `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.md` — compact digest.
 - `docs/GAMEPLAN.md` — phase-by-phase plan for the encrypted Bonnie & Clyde protocol, SFO channel, untethered hardware, and the final UI pass.
+- `docs/adr/` — decisions that are hard to reverse, with the alternatives that were rejected.
+- `GLOSSARY.md` — the project's fixed vocabulary.
+- `AGENTS.md` — build commands and hard rules for coding agents.
 - `docs/NEXT_CONTEXT_PROMPT.txt` — copy-paste bootstrap for a new AI context.
 
 ## Gallery
