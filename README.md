@@ -1,6 +1,6 @@
 # Phantom Link: Routerless Wireless Link [Handshake PoC]
 
-Phantom Link is a standalone, bidirectional wireless link built from two Raspberry Pi Pico 2 W boards. Both boards carry the same BOM: an SH1106 OLED, a PSP-1000 analog joystick on GP26/GP27, and SELECT/DELETE buttons on GP14/GP15. One board hosts a private Wi-Fi network; the other joins it. No router, access point, or phone is required.
+Phantom Link is a standalone, bidirectional wireless link built from two Raspberry Pi Pico 2 W boards. Both boards carry the same BOM: an SH1106 OLED, a PSP-1000 analog joystick on GP26/GP27, and SELECT/DELETE/BACK buttons on GP14/GP15/GP12. One board hosts a private Wi-Fi network; the other joins it. No router, access point, or phone is required.
 
 This is a handshake-first proof of concept. The link is **plaintext** right now: the firmware implements the OLED UI, input, character codec, UDP transport, peer learning, heartbeat, and timeout. Encryption, framing/CRC, authentication, replay protection, and true MAC-layer steganography are **planned but not implemented**. The project is presented as an embedded-systems prototype, not as a finished secure communicator.
 
@@ -22,7 +22,7 @@ This is a handshake-first proof of concept. The link is **plaintext** right now:
 
 **Hardware status**
 - Both UF2s build warning-free with Pico SDK 2.3.1 on native Windows.
-- `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (675,840 bytes) were produced and inspected with `picotool`.
+- `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (676,352 bytes) were produced and inspected with `picotool`.
 - **No board was connected during the build session.** Boot, typing/rendering on both boards, handshake, timeout/recovery, and both serial logs still need hardware acceptance testing. Both units must be wired to the same BOM before running the matrix. See the test matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
 
 **Not implemented yet**
@@ -80,7 +80,7 @@ There is no encryption, CRC, or sequence header yet. A lost symbol can desynchro
   - CLK GP18, MOSI GP19, RES GP20, DC GP16, CS GP17.
   - SH1106 column offset +2.
 - PSP-1000 analog joystick: X GP26/ADC0, Y GP27/ADC1.
-- SELECT GP14, DELETE GP15; active-low to GND with internal pull-ups.
+- SELECT GP14, DELETE GP15, BACK GP12; active-low to GND with internal pull-ups. BACK is an alias for DELETE (backspace / abort transmit).
 - USB power for bench testing. The AP + OLED load has not yet been characterized on battery.
 
 ## Build

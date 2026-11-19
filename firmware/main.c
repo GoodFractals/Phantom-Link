@@ -44,6 +44,7 @@ static const bool is_ap = (IS_AP != 0);
 
 #define BTN_SELECT 14
 #define BTN_DELETE 15
+#define BTN_BACK   12   // wired to the same delete action as BTN_DELETE
 
 #define WIFI_SSID "Phantom_Link"
 #define WIFI_PASSWORD "12345678"
@@ -683,6 +684,7 @@ typedef struct {
 
 static Button btn_select = { .pin = BTN_SELECT };
 static Button btn_delete = { .pin = BTN_DELETE };
+static Button btn_back = { .pin = BTN_BACK };
 
 static void button_init(Button *b, uint8_t pin) {
     b->pin = pin;
@@ -695,7 +697,7 @@ static void button_init(Button *b, uint8_t pin) {
     gpio_pull_up(pin);
 }
 
-// Both boards carry the same BOM: OLED, joystick on ADC0/ADC1, and the two
+// Both boards carry the same BOM: OLED, joystick on ADC0/ADC1, and the
 // active-low buttons. Initialization is unconditional.
 static void input_init(void) {
     adc_init();
@@ -704,6 +706,7 @@ static void input_init(void) {
 
     button_init(&btn_select, BTN_SELECT);
     button_init(&btn_delete, BTN_DELETE);
+    button_init(&btn_back, BTN_BACK);
 }
 
 static bool button_pressed(Button *b, uint32_t now) {
@@ -752,7 +755,11 @@ static void input_tick(uint32_t now) {
     last_joy_dc = dc;
 
     if (button_pressed(&btn_select, now)) handle_select_button(now);
-    if (button_pressed(&btn_delete, now)) handle_delete_button();
+    // DELETE and BACK share one action. Poll both before acting so pressing
+    // them together cannot remove two characters on the same tick.
+    bool delete_pressed = button_pressed(&btn_delete, now);
+    bool back_pressed = button_pressed(&btn_back, now);
+    if (delete_pressed || back_pressed) handle_delete_button();
 }
 
 // --- Network timers -----------------------------------------------------------

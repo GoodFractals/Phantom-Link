@@ -173,11 +173,15 @@ def main() -> int:
     assert "cyw43_arch_enable_sta_mode" in main_text
     assert "cyw43_arch_wifi_connect_async" in main_text
     assert "if (is_ap)" in main_text and "if (!is_ap)" in main_text
+    assert "#define BTN_BACK   12" in main_text
+    assert "button_init(&btn_back, BTN_BACK);" in main_text
+    assert "delete_pressed || back_pressed" in main_text
     assert "sta_use_static_ip();" in main_text
     assert "dhcp_stop(n);" in main_text
     assert "netif_set_addr(n, &ip, &mask, &gw);" in main_text
     assert "STA static IP:" in main_text
     print("roles: input/UI unconditional; IS_AP only selects Wi-Fi mode")
+    print("buttons: BACK GP12 mirrors DELETE; SELECT/init all unconditional")
     print("link: HELLO_ACK gated, RTT timeout present, both CMake targets defined")
     print("wifi: STA static IP on the AP subnet; DHCP stopped")
 

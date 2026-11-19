@@ -97,7 +97,7 @@
 </div>
 
 <div class="callout good">
-  <strong>Post-audit implementation (2026-11-18).</strong> A unified <code>firmware/</code> tree now exists: one <code>main.c</code>, one <code>oled.h</code>, and two CMake targets (<code>phantom_link_ap</code> with <code>IS_AP=1</code>, <code>phantom_link_sta</code> with <code>IS_AP=0</code>). Both UF2s build warning-free from that source with Pico SDK 2.3.1 on native Windows (Arm GNU Toolchain 14.2): <code>firmware/build/phantom_link_ap.uf2</code> is 670,720 bytes and <code>firmware/build/phantom_link_sta.uf2</code> is 675,840 bytes. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC joystick, buttons, input polling, codec, parser, and render path are unconditional, and Wi-Fi bring-up is non-blocking. The source implements the 49-code 3-digit Base-6 transport, exact control-token parsing, <code>HELLO</code>/<code>HELLO_ACK</code>/<code>LINK_PING</code>/<code>LINK_PONG</code>, peer learning from <code>addr</code>, a 1 s heartbeat, a 3 s timeout, and a non-blocking TX state machine. Host validation passed for the 48-glyph/180-byte font, all 49 codec values, a 21-character round-trip, <code>V</code> reachability, the corrected numeric hitboxes, and the unconditional input/UI path. <strong>No board was connected, so the hardware acceptance tests T2-T12 remain pending.</strong> Pixel-level OCR of the baked art also corrected three UI facts below: numeric <code>SOS</code> is on row 2, numeric bottom-right is the <code>LINK</code> indicator (not punctuation), and the alpha <code>WXYZ</code> group gains <code>V</code> as a fifth tap. See the corrected §5.4.
+  <strong>Post-audit implementation (2026-11-18).</strong> A unified <code>firmware/</code> tree now exists: one <code>main.c</code>, one <code>oled.h</code>, and two CMake targets (<code>phantom_link_ap</code> with <code>IS_AP=1</code>, <code>phantom_link_sta</code> with <code>IS_AP=0</code>). Both UF2s build warning-free from that source with Pico SDK 2.3.1 on native Windows (Arm GNU Toolchain 14.2): <code>firmware/build/phantom_link_ap.uf2</code> is 670,720 bytes and <code>firmware/build/phantom_link_sta.uf2</code> is 676,352 bytes. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC joystick, buttons, input polling, codec, parser, and render path are unconditional, and Wi-Fi bring-up is non-blocking. The source implements the 49-code 3-digit Base-6 transport, exact control-token parsing, <code>HELLO</code>/<code>HELLO_ACK</code>/<code>LINK_PING</code>/<code>LINK_PONG</code>, peer learning from <code>addr</code>, a 1 s heartbeat, a 3 s timeout, and a non-blocking TX state machine. Host validation passed for the 48-glyph/180-byte font, all 49 codec values, a 21-character round-trip, <code>V</code> reachability, the corrected numeric hitboxes, and the unconditional input/UI path. <strong>No board was connected, so the hardware acceptance tests T2-T12 remain pending.</strong> Pixel-level OCR of the baked art also corrected three UI facts below: numeric <code>SOS</code> is on row 2, numeric bottom-right is the <code>LINK</code> indicator (not punctuation), and the alpha <code>WXYZ</code> group gains <code>V</code> as a fifth tap. See the corrected §5.4.
 </div>
 
 <nav class="toc" aria-label="Table of contents">
@@ -157,7 +157,7 @@
   <tr><td>Working tree</td><td>Clean at audit time</td></tr>
   <tr><td>Build outputs present</td><td><code>Phantom_Link_tx/build/phantom_link_tx.uf2</code> (11/15 16:16), <code>Phantom_Link_rx/build/phantom_link_rx.uf2</code> (11/15 17:21)</td></tr>
   <tr><td>Toolchain</td><td>Audit assumed WSL Ubuntu. Post-audit build verified natively on Windows: Pico SDK 2.3.1, CMake 4.0.0-rc1, Ninja 1.13.2, Arm GNU Toolchain 14.2, <code>PICO_BOARD=pico2_w</code>. WSL remains an alternative, but it was unavailable on the build machine after the audit.</td></tr>
-  <tr><td>Hardware</td><td>2× Raspberry Pi Pico 2 W; 2× Inland 1.3&quot; SH1106 128×64 SPI OLED; PSP-1000 analog joystick; SELECT GP14, DELETE GP15, active-low to GND with internal pull-ups</td></tr>
+  <tr><td>Hardware</td><td>2× Raspberry Pi Pico 2 W; 2× Inland 1.3&quot; SH1106 128×64 SPI OLED; PSP-1000 analog joystick; SELECT GP14, DELETE GP15, BACK GP12, active-low to GND with internal pull-ups</td></tr>
 </table>
 
 <h3>File-hash comparison</h3>
@@ -203,7 +203,7 @@
    └──────────────────────────┘        └──────────────────────────┘
         same main.c, IS_AP=1                 same main.c, IS_AP=0</div>
 
-<p>For the PoC, the user confirmed <strong>Barebones = AP (host)</strong> and <strong>Jank Box 5000 = STA (client)</strong>. The earlier audit recommendation (Jank Box = AP) is superseded. Both units now carry the identical BOM: SH1106 OLED, PSP joystick on ADC0/ADC1, and SELECT/DELETE on GP14/GP15. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC, button, codec, parser, and screen paths are unconditional, so both boards type, send, receive, decode, and render. Wi-Fi bring-up is non-blocking, so the UI and controls run while the STA joins. The code does not care which physical board plays which role; only the UF2 differs.</p>
+<p>For the PoC, the user confirmed <strong>Barebones = AP (host)</strong> and <strong>Jank Box 5000 = STA (client)</strong>. The earlier audit recommendation (Jank Box = AP) is superseded. Both units now carry the identical BOM: SH1106 OLED, PSP joystick on ADC0/ADC1, and SELECT/DELETE/BACK on GP14/GP15/GP12. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC, button, codec, parser, and screen paths are unconditional, so both boards type, send, receive, decode, and render. Wi-Fi bring-up is non-blocking, so the UI and controls run while the STA joins. The code does not care which physical board plays which role; only the UF2 differs.</p>
 
 <h3>3.2 One source, two build targets</h3>
 <p>Move the RX <code>main.c</code> to the canonical firmware project, replace the hard <code>#define IS_AP</code> with a default, and let CMake define it per target:</p>
@@ -971,7 +971,7 @@ void tx_tick(void) {
 <h3>7.1 Build both targets</h3>
 
 <div class="callout good">
-  <strong>Verified 2026-11-18 on native Windows.</strong> Both targets built warning-free from the single <code>firmware/main.c</code> after a clean configure. Outputs: <code>phantom_link_ap.uf2</code> (670,720 bytes) and <code>phantom_link_sta.uf2</code> (675,840 bytes). The small size difference reflects the Wi-Fi role branch; the OLED, ADC, button, codec, and parser paths are shared and unconditional. SHA256: <code>04011281D53C5D4CDCEBD6B246A7351B8595A98652CAD92E4A85D4BFC1B2201A</code> (AP), <code>07685D0783E8E7F6A4209BBCBC6F8214188996A6BF320393684840DE054A4DDB</code> (STA).
+  <strong>Verified 2026-11-18 on native Windows.</strong> Both targets built warning-free from the single <code>firmware/main.c</code> after a clean configure. Outputs: <code>phantom_link_ap.uf2</code> (670,720 bytes) and <code>phantom_link_sta.uf2</code> (676,352 bytes). The small size difference reflects the Wi-Fi role branch; the OLED, ADC, button, codec, and parser paths are shared and unconditional. SHA256: <code>932907AB30E87300A0A449AE1DE008CDC7DDDA5FC64DE6E54FA9365DCB374F91</code> (AP), <code>1CE4AA2760D65A42D421EB83FC9266AA0B7F634055E1CF8209FB6EB9DDCF74E5</code> (STA).
 </div>
 
 <pre><code># PowerShell - exact commands used for the verified build
@@ -1170,7 +1170,7 @@ server, so the STA uses static 192.168.4.2/24 with gateway 192.168.4.1.</code></
 
 <h3>10.2 What to state in the first message</h3>
 <ol>
-  <li><strong>Project:</strong> Phantom Link, two Pico 2 W with identical BOM: SH1106 OLED, PSP joystick, SELECT GP14 / DELETE GP15. Barebones = AP host; Jank Box 5000 = STA client.</li>
+  <li><strong>Project:</strong> Phantom Link, two Pico 2 W with identical BOM: SH1106 OLED, PSP joystick, SELECT GP14 / DELETE GP15 / BACK GP12. Barebones = AP host; Jank Box 5000 = STA client.</li>
   <li><strong>Current commit/branch:</strong> e.g., <code>main @ a5ee129</code> or <code>poc/handshake @ &lt;hash&gt;</code>.</li>
   <li><strong>Hardware roles:</strong> which physical board is AP, which is STA; which COM ports. Both have the full OLED/joystick/button BOM.</li>
   <li><strong>What works:</strong> unified build, full UI/input on both roles, full 49-code Base-6, handshake/peer learning, heartbeat/timeout, non-blocking TX, boot splash, serial logging.</li>
@@ -1196,7 +1196,7 @@ HARDWARE
 - 2x Inland 1.3" SH1106 128x64 SPI OLED: CLK GP18, MOSI GP19, RES GP20,
   DC GP16, CS GP17, +2 column offset
 - PSP-1000 joystick: X GP26/ADC0, Y GP27/ADC1
-- SELECT GP14, DELETE GP15, both to GND with internal pull-ups
+- SELECT GP14, DELETE GP15, BACK GP12, all to GND with internal pull-ups
 - AP board: Barebones (host; OLED + joystick + buttons)
 - STA board: Jank Box 5000 (client; identical BOM)
 - Serial: [COMx / /dev/ttyACM0] = AP, [COMy / /dev/ttyACM1] = STA
@@ -1210,7 +1210,7 @@ CURRENT STATE
   DHCP and uses static 192.168.4.2/24, gateway 192.168.4.1.
 - Build verified on native Windows with Pico SDK 2.3.1:
   firmware/build/phantom_link_ap.uf2 (670,720 bytes),
-  firmware/build/phantom_link_sta.uf2 (675,840 bytes), zero warnings.
+  firmware/build/phantom_link_sta.uf2 (676,352 bytes), zero warnings.
 - Host validation passed: 48-glyph/180-byte font, all 49 codec values,
   21-character round-trip, V reachable, corrected numeric hitboxes,
   unconditional input/UI path.
@@ -1319,6 +1319,7 @@ RULES
     <tr><td>Joystick Y</td><td>GP27 / ADC1</td><td>Center ~2048; thresholds 1000/3000</td></tr>
     <tr><td>SELECT</td><td>GP14</td><td>To GND; internal pull-up; active-low</td></tr>
     <tr><td>DELETE</td><td>GP15</td><td>To GND; internal pull-up; active-low</td></tr>
+    <tr><td>BACK</td><td>GP12</td><td>To GND; internal pull-up; active-low; same action as DELETE</td></tr>
     <tr><td>Battery sense (planned)</td><td>GP28 / ADC2</td><td>Divider; not implemented</td></tr>
     <tr><td>CYW43 LED</td><td><code>CYW43_WL_GPIO_LED_PIN</code></td><td>Use for link state in the PoC</td></tr>
   </tbody>

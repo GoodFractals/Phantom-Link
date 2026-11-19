@@ -14,7 +14,7 @@ HARDWARE
   - Inland 1.3" SH1106 128x64 SPI OLED: CLK GP18, MOSI GP19, RES GP20,
     DC GP16, CS GP17, +2 column offset
   - PSP-1000 joystick: X GP26/ADC0, Y GP27/ADC1
-  - SELECT GP14, DELETE GP15, both to GND with internal pull-ups
+  - SELECT GP14, DELETE GP15, BACK GP12, all to GND with internal pull-ups
 - AP board: Barebones (host)
 - STA board: Jank Box 5000 (client)
 - Serial: [COMx / /dev/ttyACM0] = AP, [COMy / /dev/ttyACM1] = STA
@@ -31,9 +31,9 @@ CURRENT STATE
   peer learning, 1 s heartbeat, 3 s timeout, non-blocking TX, boot splash.
 - Build verified on native Windows with Pico SDK 2.3.1:
   firmware/build/phantom_link_ap.uf2 (670,720 bytes,
-  SHA256 04011281D53C5D4CDCEBD6B246A7351B8595A98652CAD92E4A85D4BFC1B2201A),
-  firmware/build/phantom_link_sta.uf2 (675,840 bytes,
-  SHA256 07685D0783E8E7F6A4209BBCBC6F8214188996A6BF320393684840DE054A4DDB),
+  SHA256 932907AB30E87300A0A449AE1DE008CDC7DDDA5FC64DE6E54FA9365DCB374F91),
+  firmware/build/phantom_link_sta.uf2 (676,352 bytes,
+  SHA256 1CE4AA2760D65A42D421EB83FC9266AA0B7F634055E1CF8209FB6EB9DDCF74E5),
   zero warnings.
 - Host validation passed: 48-glyph/180-byte font, all 49 codec values,
   21-character round-trip, V reachable, corrected numeric hitboxes, and
