@@ -10,14 +10,14 @@ This document is the roadmap. `README.md` describes what exists today; this file
 
 The project is finished when all of these are true on hardware, not in simulation:
 
-1. Both units boot from battery with no USB attached and show their UI within 3 s.
+1. Both units boot from their power bank with no PC attached and show their UI within 3 s.
 2. Cold boot to `LINK UP` in under 5 s.
 3. A 21-character message round-trips exactly, in both directions, encrypted.
 4. A modified ciphertext, a replayed frame, and a wrong key are all rejected and logged.
 5. The SFO channel reports a measured decode rate over at least 100 bursts.
 6. Either unit can be power-cycled and the session recovers without rebooting the other.
 7. A 24-hour soak run produces no crash, no watchdog reset, and no wedged transmit.
-8. Battery runtime is measured and documented.
+8. Power-bank runtime is measured and documented. The pack's own LEDs remain the charge gauge.
 9. A fresh reader can build, flash, and run both units from the README alone.
 
 ---
@@ -237,18 +237,25 @@ Exit gate: measured numbers exist, and the app provably does not depend on SFO.
 
 Exit gate: the link survives a day of abuse without human intervention.
 
-### Phase 5 — Untethered hardware (parallel track, start early)
+### Phase 5 — Untethered power (parallel track, start early)
+
+Each unit runs from a **2000 mAh USB power bank** zip-tied under the breadboard with a 6-inch cable. There is no enclosure and no battery-sense hardware, by design.
+
+Why no sense hardware: a power bank's output is a regulated 5 V rail. A divider on it would read 5.0 V at full charge and 5.0 V at empty, so it cannot report cell state. The pack's LEDs are the only honest gauge. The cost is no software low-battery warning: the unit runs normally, then stops.
 
 | # | Step | DoD |
 |---|---|---|
-| 5.1 | Choose power path: LiPo → VSYS with a power-path charger | Schematic recorded; no back-feed to USB |
-| 5.2 | Add `GP28/ADC2` battery divider (2:1, high value) | Multimeter voltage matches ADC reading within 2% |
-| 5.3 | Implement battery sampling + 4-bucket mapping | `BAT:` cell shows real charge; USB vs battery detectable |
-| 5.4 | Measure current in idle, RX, TX, and with radio PM on/off | Table in docs: mA per state, projected runtime |
-| 5.5 | Choose PM policy from the measurements | Runtime target met without breaking the 3 s link timeout |
-| 5.6 | Add power switch and bulk capacitor | No brownout during TX bursts |
-| 5.7 | Enclosure: OLED window, joystick cap, 3 buttons, USB cutout | Both units assembled and hand-held |
-| 5.8 | Untethered acceptance run | §1 items 1, 2, 8 pass on battery |
+| 5.1 | Mount: pack + 6" A→micro cable zip-tied under each breadboard | Both units run with no PC attached; cable holds under a tug |
+| 5.2 | Measure current in idle, RX, TX, and with radio PM on/off | Table in docs: mA per state, projected runtime |
+| 5.3 | Verify the pack does not auto-cutoff at idle | 1 h idle with link up, no shutdown; pack model recorded |
+| 5.4 | Choose PM policy from the measurements | Runtime target met without breaking the 3 s timeout |
+| 5.5 | Runtime test: continuous link + a message every 5 min | Measured hours recorded, within 20% of projection |
+| 5.6 | Power-cycle recovery | Pulling the cable mid-TX leaves both sides recoverable |
+| 5.7 | Mark the packs | Charge state readable without unzipping the rig |
+
+Exit gate: both units run a full session untethered, and the measured runtime is written down.
+
+**Auto-cutoff is the one real risk.** Many packs shut off below ~50–100 mA. Pico 2 W plus OLED plus an active radio usually stays above that, but check it in 5.3. If a pack cuts out, keep the radio out of power save (already the case) and log the pack model so the pair can be swapped.
 
 ### Phase 6 — UI finish (last, by design)
 
@@ -256,9 +263,9 @@ Nothing in this phase may touch `proto_*`, `net_link.c`, or timing constants. If
 
 | # | Step | DoD |
 |---|---|---|
-| 6.1 | Extract `ui_layout.h` with named rects for text rows, signal, battery, link | Drawing code has zero magic coordinates |
+| 6.1 | Extract `ui_layout.h` with named rects for text rows, signal, status cells, and link | Drawing code has zero magic coordinates |
 | 6.2 | Redraw the numeric page: drop `IN RANGE?` and `SOS`, keep digit grid | Art matches layout rects; dead handlers deleted |
-| 6.3 | Draw battery segments from the Phase 5 reading | Buckets match multimeter within one segment |
+| 6.3 | Repurpose the `BAT:` cell: TX/RX activity, pack-check reminder, or blank | No battery gauge is drawn, because no sensor exists |
 | 6.4 | Link wording: `LINK` / `NO LINK`, plus a lock glyph only when crypto is active | No `SEC` claim unless the session is actually authenticated |
 | 6.5 | Optional alpha-page tidy: consistent label weight, punctuation placement | Both pages share one visual language |
 | 6.6 | Add a one-screen help/legend reachable by long-press | New user can type and send without the README |
@@ -293,8 +300,8 @@ Existing T2–T12 stay. New tests:
 | T20 | Reconnect | AP and STA each power-cycled 10×, all recover |
 | T21 | Watchdog | Forced hang resets and recovers |
 | T22 | 24 h soak | No reset, no leak, no wedged send |
-| T23 | Battery | Runtime within 20% of the measured projection |
-| T24 | Untethered boot | Both units boot and link with no USB attached |
+| T23 | Power-bank runtime | Measured hours within 20% of projection; no idle auto-cutoff |
+| T24 | Untethered boot | Both units boot and link from their packs with no PC attached |
 
 ---
 
@@ -309,7 +316,8 @@ Existing T2–T12 stay. New tests:
 | Wi-Fi power save vs latency | Link timeouts, sluggish TX | Phase 5 measures PM modes; keep 3 s timeout honest |
 | Flash/RAM growth with crypto | No room for UI art | RP2350 has 2 MB flash / 520 KB RAM; measure after each module |
 | Art pass touching logic | Regressions at the worst time | `ui_layout.h` contract; Phase 6 forbids protocol edits |
-| Battery sag on TX bursts | Brownout resets | Bulk capacitor + soft-start test in 5.6 |
+| Power bank auto-cutoff at low current | Link dies with no warning | Keep the radio out of power save; verify 1 h idle in 5.3 |
+| No low-battery warning | Unit stops mid-demo | Check pack LEDs before a run; keep a charged spare pair |
 
 ---
 
@@ -336,7 +344,7 @@ Existing T2–T12 stay. New tests:
 | 6 | 4.1–4.3, reconnect and watchdog |
 | 7 | 4.4–4.6, soak start |
 | — | Hardware track in parallel from session 2 |
-| 8 | Phase 5 measurements and enclosure |
+| 8 | Phase 5 mounting, current measurements, runtime test |
 | 9 | Phase 6 UI pass |
 | 10 | Phase 7 docs, video, release |
 
@@ -353,9 +361,16 @@ Existing T2–T12 stay. New tests:
 
 ---
 
-## 12. Open decisions (need a human answer)
+## 12. Decisions
 
-1. **Cipher.** Speck128/128 in CTR + CMAC is compact, has published vectors, and fits the "Bonnie & Clyde" story. ChaCha20-Poly1305 via the SDK's mbedTLS is better engineering and less code to get wrong. Recommendation: build `proto_crypto` behind an interface, ship Speck for the demo, keep the AEAD slot.
-2. **SFO role.** Decorative telemetry vs handshake key hint. Recommendation: telemetry in v1, key hint behind a flag in 3.6.
-3. **Battery sense.** `GP28/ADC2` divider (needs two resistors) vs `GP29/VSYS` shared with the radio. Recommendation: divider.
-4. **Enclosure.** Off-the-shelf project box vs printed shell. Affects Phase 5.7 only.
+**Decided**
+
+1. **Cipher.** Speck128/128 in CTR + CMAC. `proto_crypto` keeps a cipher-agnostic interface so a ChaCha20-Poly1305 AEAD slot can replace it without touching the session layer.
+2. **SFO role.** Telemetry only in v1. The key-hint variant stays behind `-DSFO_KEY_HINT=1` and off by default.
+3. **Battery sense.** None. Each unit runs from a 2000 mAh power bank; its LEDs are the charge gauge. Software cannot sense cell state through a regulated 5 V output.
+4. **Enclosure.** None. Power bank and breadboard are zip-tied together as a jank box.
+
+**Still open**
+
+5. **PSK provisioning.** A compiled constant is simplest and adequate for a demo, but every build ships the same key. The alternative is a first-boot pairing step where one board displays six digits and the other accepts them on the joystick. Recommendation: compiled constant for v1, documented as a limitation, pairing deferred to v2.
+6. **Primary demo distance.** 1 m, 5 m, and 15 m are the SFO measurement points. Pick the one that goes in the video.

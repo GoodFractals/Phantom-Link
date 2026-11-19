@@ -27,10 +27,10 @@ This is a handshake-first proof of concept. The link is **plaintext** right now:
 - **No board was connected during the build session.** Boot, typing/rendering on both boards, handshake, timeout/recovery, and both serial logs still need hardware acceptance testing. Both units must be wired to the same BOM before running the matrix. See the test matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
 
 **Not implemented yet**
-- Encryption (Speck is planned), key exchange, authentication, replay protection.
+- Encryption (Speck128/128 CTR + CMAC is planned), key exchange, authentication, replay protection.
 - CRC, message IDs, sequence numbers, duplicate detection, retransmission.
 - MAC-layer StegoFrameOrder; the current SFO is an application-layer packet-name PoC.
-- Battery monitoring, enclosure, range/power measurements, antenna modification.
+- Battery monitoring (power-bank LEDs are the gauge), enclosure, range/power measurements, antenna modification.
 
 ## Architecture
 
@@ -225,7 +225,7 @@ The pre-audit RX tree is retained for rollback. The unified firmware is the acti
 - [ ] Add message IDs, sequence numbers, CRC/framing, duplicate detection.
 - [ ] Add Speck encryption and key exchange.
 - [ ] Implement MAC-layer StegoFrameOrder (the current SFO is application-layer).
-- [ ] Package into an enclosure and run from a battery.
+- [ ] Run untethered from a zip-tied 2000 mAh power bank and measure runtime.
 - [ ] [Undecided/Optional] Antenna trace modification for range testing; this voids certification and is bench-only.
 
 ## Security and scope
