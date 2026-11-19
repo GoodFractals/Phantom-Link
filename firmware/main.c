@@ -32,6 +32,7 @@
 #include "alpha_ui.h"
 #include "numeric_ui.h"
 #include "boot_ui.h"
+#include "banner.h"
 
 #ifndef IS_AP
 #define IS_AP 1
@@ -988,7 +989,9 @@ int main(void) {
     stdio_init_all();
     sleep_ms(1500); // give the USB CDC monitor time to attach
 
-    printf("\n--- PHANTOM LINK %s ---\n", is_ap ? "AP" : "STA");
+    char banner[64];
+    phantom_banner(banner, sizeof banner, is_ap);
+    printf("\n%s\n", banner);
 
     oled_init();
     memcpy(oled_buffer, boot_image, 1024);

@@ -8,12 +8,23 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(PICO_BOARD pico2_w CACHE STRING "Board type")
 
+# Build identity: the first eight hex digits of main.c's SHA256. The directory
+# dependency makes CMake re-run when main.c changes, so the banner cannot go
+# stale; rebuilding the same tree produces the same hash.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_LIST_DIR}/main.c")
+file(SHA256 "${CMAKE_CURRENT_LIST_DIR}/main.c" PHANTOM_SOURCE_HASH)
+string(SUBSTRING "${PHANTOM_SOURCE_HASH}" 0 8 PHANTOM_BUILD_HASH)
+
 pico_sdk_init()
 
 function(add_phantom_target target_name is_ap)
     add_executable(${target_name} main.c)
 
-    target_compile_definitions(${target_name} PRIVATE IS_AP=${is_ap})
+    target_compile_definitions(${target_name} PRIVATE
+        IS_AP=${is_ap}
+        PHANTOM_BUILD_HASH="${PHANTOM_BUILD_HASH}"
+    )
 
     target_compile_options(${target_name} PRIVATE -Wall -Wextra -Werror)
 
