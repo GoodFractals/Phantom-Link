@@ -49,7 +49,8 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 
 
 ### Detailed Serial Port Monitoring [Fixed Brownout Issue]
-<img width="1919" height="1079" alt="Screenshot 2026-11-01 143836" src="https://github.com/user-attachments/assets/3093cd82-b947-4402-a433-2caf3119a111" />
+<img width="1919" height="1079" alt="Screenshot 2026-11-18 190348" src="https://github.com/user-attachments/assets/193ac7e2-7062-4f88-91bf-dc1d9776da8d" />
+
 
 
 ## Roadmap
