@@ -367,6 +367,21 @@ Existing T2–T12 stay. New tests:
 - Secure boot, flash encryption, or tamper-resistant key storage.
 - A general-purpose mesh or store-and-forward network.
 
+### Why two-party is the security model
+
+In a two-party link, membership is decided by physical possession: whoever holds the board with the key is the peer. There is no directory, no phone number, no invite link, and nothing to mis-click.
+
+At three or more parties that property disappears. The cipher still works; what breaks is **membership authentication** — proving that the device you added belongs to the person you meant. No protocol solves that from the inside. It needs an out-of-band channel: a pre-shared secret, a physical handoff, or a fingerprint compared on both screens by a human. The 2025 group-chat leak is the textbook case: the end-to-end encryption held, and a mis-added contact defeated it.
+
+So v1 stays strictly two-party. If a third device is ever added, the minimum bar is:
+
+1. Per-device identity keys, not one shared group key.
+2. A short fingerprint displayed on both screens and confirmed by a person.
+3. Explicit removal with key rotation, not silent deletion.
+4. A written rule that adding a member is a physical act.
+
+Until then, "two people, two boards, one link" is the security model, and it is an honest one.
+
 ---
 
 ## 12. Decisions
