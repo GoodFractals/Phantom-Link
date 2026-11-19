@@ -47,6 +47,8 @@ CURRENT STATE
 - Encryption, CRC/framing, authentication, sequence/duplicate detection,
   and MAC-layer SFO are not implemented.
 - Phantom_Link_rx/ and Phantom_Link_tx/ are rollback/reference only.
+- docs/GAMEPLAN.md is the roadmap: framing, crypto, SFO, untethered hardware,
+  then the UI pass last. Follow its phase order; do not skip a gate.
 
 DECISIONS
 - One firmware source, two build targets: phantom_link_ap (IS_AP=1) and

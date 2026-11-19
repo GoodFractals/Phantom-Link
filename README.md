@@ -182,6 +182,7 @@ The pre-audit RX tree is retained for rollback. The unified firmware is the acti
 
 - `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` — complete forensic audit, defect register, protocol/UI designs, build order, acceptance matrix, and handoff packet.
 - `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.md` — compact digest.
+- `docs/GAMEPLAN.md` — phase-by-phase plan for the encrypted Bonnie & Clyde protocol, SFO channel, untethered hardware, and the final UI pass.
 - `docs/NEXT_CONTEXT_PROMPT.txt` — copy-paste bootstrap for a new AI context.
 
 ## Gallery
