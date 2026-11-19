@@ -176,12 +176,15 @@ def main() -> int:
     assert "#define BTN_BACK   12" in main_text
     assert "button_init(&btn_back, BTN_BACK);" in main_text
     assert "delete_pressed || back_pressed" in main_text
+    assert "cyw43_wifi_get_rssi(&cyw43_state, &rssi)" in main_text
+    assert "draw_status_hud();" in main_text
     assert "sta_use_static_ip();" in main_text
     assert "dhcp_stop(n);" in main_text
     assert "netif_set_addr(n, &ip, &mask, &gw);" in main_text
     assert "STA static IP:" in main_text
     print("roles: input/UI unconditional; IS_AP only selects Wi-Fi mode")
     print("buttons: BACK GP12 mirrors DELETE; SELECT/init all unconditional")
+    print("hud: RSSI bars and link bullet drawn into the baked numeric cells")
     print("link: HELLO_ACK gated, RTT timeout present, both CMake targets defined")
     print("wifi: STA static IP on the AP subnet; DHCP stopped")
 

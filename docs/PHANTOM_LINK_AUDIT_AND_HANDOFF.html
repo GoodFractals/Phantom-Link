@@ -97,7 +97,7 @@
 </div>
 
 <div class="callout good">
-  <strong>Post-audit implementation (2026-11-18).</strong> A unified <code>firmware/</code> tree now exists: one <code>main.c</code>, one <code>oled.h</code>, and two CMake targets (<code>phantom_link_ap</code> with <code>IS_AP=1</code>, <code>phantom_link_sta</code> with <code>IS_AP=0</code>). Both UF2s build warning-free from that source with Pico SDK 2.3.1 on native Windows (Arm GNU Toolchain 14.2): <code>firmware/build/phantom_link_ap.uf2</code> is 670,720 bytes and <code>firmware/build/phantom_link_sta.uf2</code> is 676,352 bytes. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC joystick, buttons, input polling, codec, parser, and render path are unconditional, and Wi-Fi bring-up is non-blocking. The source implements the 49-code 3-digit Base-6 transport, exact control-token parsing, <code>HELLO</code>/<code>HELLO_ACK</code>/<code>LINK_PING</code>/<code>LINK_PONG</code>, peer learning from <code>addr</code>, a 1 s heartbeat, a 3 s timeout, and a non-blocking TX state machine. Host validation passed for the 48-glyph/180-byte font, all 49 codec values, a 21-character round-trip, <code>V</code> reachability, the corrected numeric hitboxes, and the unconditional input/UI path. <strong>No board was connected, so the hardware acceptance tests T2-T12 remain pending.</strong> Pixel-level OCR of the baked art also corrected three UI facts below: numeric <code>SOS</code> is on row 2, numeric bottom-right is the <code>LINK</code> indicator (not punctuation), and the alpha <code>WXYZ</code> group gains <code>V</code> as a fifth tap. See the corrected §5.4.
+  <strong>Post-audit implementation (2026-11-18).</strong> A unified <code>firmware/</code> tree now exists: one <code>main.c</code>, one <code>oled.h</code>, and two CMake targets (<code>phantom_link_ap</code> with <code>IS_AP=1</code>, <code>phantom_link_sta</code> with <code>IS_AP=0</code>). Both UF2s build warning-free from that source with Pico SDK 2.3.1 on native Windows (Arm GNU Toolchain 14.2): <code>firmware/build/phantom_link_ap.uf2</code> is 670,720 bytes and <code>firmware/build/phantom_link_sta.uf2</code> is 677,376 bytes. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC joystick, buttons, input polling, codec, parser, and render path are unconditional, and Wi-Fi bring-up is non-blocking. The source implements the 49-code 3-digit Base-6 transport, exact control-token parsing, <code>HELLO</code>/<code>HELLO_ACK</code>/<code>LINK_PING</code>/<code>LINK_PONG</code>, peer learning from <code>addr</code>, a 1 s heartbeat, a 3 s timeout, and a non-blocking TX state machine. Host validation passed for the 48-glyph/180-byte font, all 49 codec values, a 21-character round-trip, <code>V</code> reachability, the corrected numeric hitboxes, and the unconditional input/UI path. <strong>No board was connected, so the hardware acceptance tests T2-T12 remain pending.</strong> Pixel-level OCR of the baked art also corrected three UI facts below: numeric <code>SOS</code> is on row 2, numeric bottom-right is the <code>LINK</code> indicator (not punctuation), and the alpha <code>WXYZ</code> group gains <code>V</code> as a fifth tap. See the corrected §5.4.
 </div>
 
 <nav class="toc" aria-label="Table of contents">
@@ -971,7 +971,7 @@ void tx_tick(void) {
 <h3>7.1 Build both targets</h3>
 
 <div class="callout good">
-  <strong>Verified 2026-11-18 on native Windows.</strong> Both targets built warning-free from the single <code>firmware/main.c</code> after a clean configure. Outputs: <code>phantom_link_ap.uf2</code> (670,720 bytes) and <code>phantom_link_sta.uf2</code> (676,352 bytes). The small size difference reflects the Wi-Fi role branch; the OLED, ADC, button, codec, and parser paths are shared and unconditional. SHA256: <code>932907AB30E87300A0A449AE1DE008CDC7DDDA5FC64DE6E54FA9365DCB374F91</code> (AP), <code>1CE4AA2760D65A42D421EB83FC9266AA0B7F634055E1CF8209FB6EB9DDCF74E5</code> (STA).
+  <strong>Verified 2026-11-18 on native Windows.</strong> Both targets built warning-free from the single <code>firmware/main.c</code> after a clean configure. Outputs: <code>phantom_link_ap.uf2</code> (670,720 bytes) and <code>phantom_link_sta.uf2</code> (677,376 bytes). The small size difference reflects the Wi-Fi role branch; the OLED, ADC, button, codec, and parser paths are shared and unconditional. SHA256: <code>E0C1C9CE3849B647B1865EF106C3F1004341D2E7EC5C3D349F0EDDF7EDD7D1E9</code> (AP), <code>D4CE0FB79BF9A82A4ACE21ACB2E099981BB626781348F790A5E82AAC9B1C5EC7</code> (STA).
 </div>
 
 <pre><code># PowerShell - exact commands used for the verified build
@@ -1208,9 +1208,12 @@ CURRENT STATE
   3 s timeout, non-blocking TX, boot splash. IS_AP selects only Wi-Fi mode.
 - SDK 2.3.1 AP build has no DHCP server (CYW43_NETUTILS=0), so the STA stops
   DHCP and uses static 192.168.4.2/24, gateway 192.168.4.1.
+- Numeric-page status HUD: four RSSI bars on the STA (AP has no per-client
+  RSSI), filled/hollow link square beside LINK, BAT: reserved. GP12 BACK
+  mirrors DELETE.
 - Build verified on native Windows with Pico SDK 2.3.1:
   firmware/build/phantom_link_ap.uf2 (670,720 bytes),
-  firmware/build/phantom_link_sta.uf2 (676,352 bytes), zero warnings.
+  firmware/build/phantom_link_sta.uf2 (677,376 bytes), zero warnings.
 - Host validation passed: 48-glyph/180-byte font, all 49 codec values,
   21-character round-trip, V reachable, corrected numeric hitboxes,
   unconditional input/UI path.

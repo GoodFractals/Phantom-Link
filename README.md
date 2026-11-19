@@ -17,12 +17,13 @@ This is a handshake-first proof of concept. The link is **plaintext** right now:
 - 1 s heartbeat, 3 s link timeout, `LINK UP` / `LINK LOST` serial logs, and link-state LED.
 - Non-blocking transmit state machine; `cyw43_arch_poll()` runs continuously.
 - Boot splash from `boot_ui.h`, restored UI after boot, and draft/response text on separate rows.
+- Runtime status HUD on the numeric page: four-bar RSSI on the STA and a filled/hollow link bullet beside `LINK`. The battery cell is reserved but has no sensor yet.
 - Two build targets from one `main.c`: `phantom_link_ap` (`IS_AP=1`) and `phantom_link_sta` (`IS_AP=0`). `IS_AP` selects only the Wi-Fi role; the OLED/input path is unconditional in both.
 - Host validation: font table, all 49 codec values, a 21-character round-trip, `V` reachability, the corrected numeric hitboxes, and the unconditional UI/input path pass.
 
 **Hardware status**
 - Both UF2s build warning-free with Pico SDK 2.3.1 on native Windows.
-- `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (676,352 bytes) were produced and inspected with `picotool`.
+- `firmware/build/phantom_link_ap.uf2` (670,720 bytes) and `firmware/build/phantom_link_sta.uf2` (677,376 bytes) were produced and inspected with `picotool`.
 - **No board was connected during the build session.** Boot, typing/rendering on both boards, handshake, timeout/recovery, and both serial logs still need hardware acceptance testing. Both units must be wired to the same BOM before running the matrix. See the test matrix in `docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html` §8.
 
 **Not implemented yet**

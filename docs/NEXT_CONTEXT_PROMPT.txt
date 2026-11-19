@@ -27,13 +27,16 @@ CURRENT STATE
   join completes, and failed joins retry in the main loop.
 - DHCP is not available in the SDK 2.3.1 AP build (CYW43_NETUTILS=0), so
   the STA stops DHCP and uses static 192.168.4.2/24, gateway 192.168.4.1.
+- Numeric-page HUD is live: four RSSI bars on the STA, filled/hollow link
+  square beside LINK. The AP has no per-client RSSI, so its signal cell stays
+  empty until the STA relays a reading. BAT: is reserved, no sense path yet.
 - 49-code 3-digit Base-6, exact tokens, HELLO/HELLO_ACK/LINK_PING/LINK_PONG,
   peer learning, 1 s heartbeat, 3 s timeout, non-blocking TX, boot splash.
 - Build verified on native Windows with Pico SDK 2.3.1:
   firmware/build/phantom_link_ap.uf2 (670,720 bytes,
-  SHA256 932907AB30E87300A0A449AE1DE008CDC7DDDA5FC64DE6E54FA9365DCB374F91),
-  firmware/build/phantom_link_sta.uf2 (676,352 bytes,
-  SHA256 1CE4AA2760D65A42D421EB83FC9266AA0B7F634055E1CF8209FB6EB9DDCF74E5),
+  SHA256 E0C1C9CE3849B647B1865EF106C3F1004341D2E7EC5C3D349F0EDDF7EDD7D1E9),
+  firmware/build/phantom_link_sta.uf2 (677,376 bytes,
+  SHA256 D4CE0FB79BF9A82A4ACE21ACB2E099981BB626781348F790A5E82AAC9B1C5EC7),
   zero warnings.
 - Host validation passed: 48-glyph/180-byte font, all 49 codec values,
   21-character round-trip, V reachable, corrected numeric hitboxes, and

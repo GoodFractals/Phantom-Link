@@ -493,6 +493,60 @@ static void draw_text_tail(int y, const char *text) {
     oled_draw_custom_string(0, y, line);
 }
 
+// --- Status HUD ---------------------------------------------------------------
+// The baked numeric page reserves three cells that the cursor never visits:
+// a tall signal box at x 96-120, y 20-39; "BAT:" at y 42-52; and "LINK" at
+// x 105-122, y 56-63. Only the signal and link cells have live data today.
+static int signal_bars = 0; // 0..4; 0 also means "no reading"
+static uint32_t next_rssi_ms = 0;
+
+static void hud_tick(uint32_t now) {
+    // cyw43_wifi_get_rssi only reports a station's link to its AP, so the AP
+    // side has no signal reading until the STA relays one.
+    if (is_ap) return;
+
+    if (link_state != LINK_UP) {
+        signal_bars = 0;
+        return;
+    }
+    if ((int32_t)(now - next_rssi_ms) < 0) return;
+    next_rssi_ms = now + 2000;
+
+    int32_t rssi = 0;
+    if (cyw43_wifi_get_rssi(&cyw43_state, &rssi) != 0 || rssi == 0) {
+        signal_bars = 0;
+    } else if (rssi >= -55) {
+        signal_bars = 4;
+    } else if (rssi >= -65) {
+        signal_bars = 3;
+    } else if (rssi >= -75) {
+        signal_bars = 2;
+    } else {
+        signal_bars = 1;
+    }
+}
+
+static void draw_status_hud(void) {
+    static const uint8_t bar_x[4] = { 98, 103, 108, 113 };
+    static const uint8_t bar_h[4] = { 5, 9, 13, 17 };
+    const int baseline = 38; // bottom pixel row inside the bracket cell
+
+    // Clear the cell interior every frame. The baked art still carries a
+    // placeholder dot until the art pass; drawing over the top of it would
+    // leave stray pixels between the bars.
+    oled_fill_rect(98, 21, 20, 18, false);
+    for (int i = 0; i < signal_bars && i < 4; i++) {
+        oled_fill_rect(bar_x[i], baseline - bar_h[i], 4, bar_h[i], true);
+    }
+
+    // Filled square beside "LINK" means up; hollow square means down.
+    if (link_state == LINK_UP) {
+        oled_fill_rect(99, 59, 4, 4, true);
+    } else {
+        oled_draw_box(99, 59, 3, 3);
+    }
+}
+
 static void drawMainUI(void) {
     memcpy(oled_buffer, (current_page == 0) ? alpha_image : numeric_image, 1024);
 
@@ -516,6 +570,8 @@ static void drawMainUI(void) {
     } else if (rx_message_len > 0) {
         draw_text_tail(0, rx_message);
     }
+
+    if (current_page == 1) draw_status_hud();
 
     oled_show();
 }
@@ -961,6 +1017,7 @@ int main(void) {
         input_tick(now);
         net_tick(now);
         tx_tick(now);
+        hud_tick(now);
 
         if ((int32_t)(now - next_draw_ms) >= 0) {
             drawMainUI();
