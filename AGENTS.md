@@ -16,7 +16,14 @@ cmake --build firmware/build -j4
 
 Artifacts: `firmware/build/phantom_link_ap.uf2` and `firmware/build/phantom_link_sta.uf2`. Flash by holding BOOTSEL, plugging USB, and copying the matching UF2 to the `RPI-RP2` volume.
 
-Host checks: `python firmware/tests/validate_assets.py`.
+Host checks:
+
+```powershell
+cmake -S firmware/host -B firmware/host/build -G Ninja
+cmake --build firmware/host/build
+ctest --test-dir firmware/host/build --output-on-failure
+python firmware/tests/validate_assets.py
+```
 
 ## Hard rules
 

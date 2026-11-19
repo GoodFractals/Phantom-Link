@@ -15,7 +15,7 @@ function(add_phantom_target target_name is_ap)
 
     target_compile_definitions(${target_name} PRIVATE IS_AP=${is_ap})
 
-    target_compile_options(${target_name} PRIVATE -Wall -Wextra)
+    target_compile_options(${target_name} PRIVATE -Wall -Wextra -Werror)
 
     target_include_directories(${target_name} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
