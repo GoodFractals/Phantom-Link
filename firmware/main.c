@@ -182,6 +182,19 @@ static bool tx_active(void) {
            tx_msg.phase == PROTO_TX_WAITING;
 }
 
+// Confirmed delivery clears the draft, but only when the user has not typed
+// over it during the send. Input stays live while transmitting, so a changed
+// draft is newer than the message that just landed and must survive.
+static void tx_clear_delivered_draft(void) {
+    if (msg_length != (int)tx_msg.len) return;
+    if (memcmp(current_message, tx_msg.text, (size_t)tx_msg.len) != 0) return;
+
+    msg_length = 0;
+    current_message[0] = '\0';
+    active_group = -1;
+    tap_count = 0;
+}
+
 // Frame payloads carry 16-bit message IDs in network byte order.
 static uint16_t read_u16(const uint8_t *p) {
     return (uint16_t)(((uint16_t)p[0] << 8) | p[1]);
@@ -496,6 +509,7 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
             printf("TX delivered msg=%u attempts=%u retransmits=%u\n",
                    (unsigned)acked_id, (unsigned)tx_msg.attempt,
                    (unsigned)tx_msg.retransmits);
+            tx_clear_delivered_draft();
             ui_active = true;
         } else if (tx_active() && acked_id == tx_msg.msg_id) {
             printf("TX ACK msg=%u next=%u resume=%u\n", (unsigned)acked_id,

@@ -16,10 +16,10 @@ revert the change; do not fix it later.
 | 5 | Addressing | AP is `192.168.4.1`; STA reports `192.168.4.2` |
 | 6 | Handshake | Cold boot reaches `LINK UP` in under 5 s |
 | 7 | Heartbeat | Link stays up while idle; power-cycling one board shows `LINK LOST` within 3 s |
-| 8 | Message round-trip | A 21-glyph message arrives exactly, in both directions |
+| 8 | Message round-trip | A 21-glyph message arrives exactly in both directions; the sender's draft clears on delivery |
 | 9 | Non-blocking TX | UI and input respond while a message is transmitting |
 | 10 | HUD | STA shows RSSI bars; AP signal cell is empty or shows relayed data, never a fake reading |
-| 11 | Abort | DELETE mid-send stops the message and leaves no partial text on the receiver |
+| 11 | Abort | DELETE mid-send stops the message, leaves no partial text on the receiver, and keeps the draft on the sender |
 | 12 | Recovery | The pair re-links after either board restarts |
 
 **Record:** paste both serial logs, a photo of each OLED, and the UF2 hashes.

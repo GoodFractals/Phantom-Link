@@ -11,6 +11,7 @@
 - [x] A second send after an abort starts cleanly.
 - [x] The baseline non-blocking-send check still passes.
 - [x] Queue depth is bounded and overflow is reported, not silently dropped.
+- [ ] A delivered message clears the sender's draft; an aborted or failed send leaves it on screen.
 
 ## Verification
 
@@ -18,5 +19,9 @@
 counting. `main.c` now enqueues a whole message up front, drains one frame per
 tick, and aborts/drains on DELETE. `tx_enqueue_message()` reports overflow and
 aborts. Host `test_txq` covers FIFO, wraparound, overflow, clear, and null
-safety. `ctest` 9/9. Both targets build clean under `-Werror`. Hardware
-verification joins the ticket 09 run.
+safety. `ctest` 9/9. Both targets build clean under `-Werror`.
+
+2026-11-19 — hardware: user confirmed send and DELETE mid-send abort work.
+That run exposed a bool/`err_t` mismatch in `tx_tick` (fixed in `8772dcf`);
+the first build re-sent one frame forever. Draft clearing on delivery was then
+added and needs one hardware check before this ticket closes.
