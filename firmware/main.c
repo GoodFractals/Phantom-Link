@@ -694,7 +694,9 @@ static void start_send(void) {
 
     tx_next_ms = now_ms();
     tx_notice[0] = '\0';
-    ui_active = false;
+    // Keep the cursor visible while sending: ticket 07 requires the UI and
+    // input to stay responsive during transmit. Hiding the cursor made a
+    // harmless 5 s send look like a freeze.
     active_group = -1;
     tap_count = 0;
 
@@ -751,8 +753,9 @@ static void tx_tick(uint32_t now) {
 
     if (!txq_peek(&tx_queue, &item)) return;
 
-    err_t err = send_data_frame(item.payload, item.payload_len, item.flags);
-    if (err != ERR_OK) {
+    // send_data_frame returns bool, not err_t. Do not compare it with ERR_OK:
+    // a successful send is true (1), which would look like a failure.
+    if (!send_data_frame(item.payload, item.payload_len, item.flags)) {
         tx_next_ms = now + SYMBOL_INTERVAL_MS;
         return;
     }

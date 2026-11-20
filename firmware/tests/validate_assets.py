@@ -155,6 +155,10 @@ def main() -> int:
     assert "if (send_control_frame(PROTO_TYPE_HELLO_ACK))" in main_text
     assert "proto_frame_check_crc" in main_text
     assert "send_data_frame" in main_text
+    # send_data_frame returns bool; assigning it to err_t made every
+    # successful send look like an error and stalled TX forever.
+    assert "err_t err = send_data_frame" not in main_text
+    assert "if (!send_data_frame(" in main_text
     assert "pkt_eq" not in main_text
     assert "TOK_HELLO" not in main_text
     assert "proto/proto_frame.c" in cmake_text

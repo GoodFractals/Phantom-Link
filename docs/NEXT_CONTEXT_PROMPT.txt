@@ -47,11 +47,11 @@ CURRENT STATE
   framed/session build (tickets 03-05) has not been flashed; the full T2-T12
   matrix and the HUD build still need a hardware run.
 - Last verified build: Pico SDK 2.3.1, zero warnings under -Werror.
-  main.c build hash 6b1dff08
+  main.c build hash e9f0b308
   phantom_link_ap.uf2 680,960 bytes
-  SHA256 B4DA78F9B357206872C00EEEB26C8B857A923E15F23AFEF045E6E8645712F64D
+  SHA256 3E8DA46090686812C804BAEDEB21F0CBA3DD694C37675BF7C75101591A6DDC05
   phantom_link_sta.uf2 687,616 bytes
-  SHA256 BD57B20CD03C712B00039F33204264ED2B31CBAE3F3199EAABB289FF5F75B71A
+  SHA256 E74D375708AAD8390D1E42E8CEDDC0645FD9630A7A13D5C1C0F330C0AB92F330
   Rebuild rather than trusting these hashes; they move with every commit.
 - Host validation: python firmware/tests/validate_assets.py
   Expected final line: HOST VALIDATION: PASS.
