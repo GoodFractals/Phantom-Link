@@ -11,7 +11,7 @@ The code is the source of truth. The gameplan describes what to build next;
 the tickets are the executable backlog.
 
 REPO: https://github.com/GoodFractals/Phantom-Link
-COMMIT: [paste hash]
+COMMIT: 3230771
 BRANCH: poc/handshake (not pushed yet)
 FALLBACK TAG: poc/plaintext-v1  (known-good plaintext build)
 
@@ -43,9 +43,16 @@ CURRENT STATE
 - Session layer: hardware-random session ID per handshake (get_rand_32),
   per-direction sequence from 0, 32-bit sliding replay window, duplicate and
   stale counters, sequence-gap message invalidation, 30 s SESSION stats line.
-- The token build reached LINK UP and sent typed messages on hardware. The
-  framed/session build (tickets 03-05) has not been flashed; the full T2-T12
-  matrix and the HUD build still need a hardware run.
+- Reliable messages: position-indexed DATA frames, ACKs at every 8th frame and
+  the FINAL, suffix retransmit from the first hole, duplicate suppression,
+  20-attempt bound with a NO ACK notice, bounded 64-deep TX queue drained by
+  the main loop. DELETE mid-send aborts and drains.
+- BYE teardown: hold DELETE + BACK for 1.5 s; the peer drops to NO LINK
+  immediately. The 3 s timeout path still covers a power-cycle without BYE.
+- The framed/session/reliable build is on hardware: LINK UP, bidirectional
+  typed messages, per-frame ACKs, retry/delivery (`TX delivered ... attempt=1
+  retransmits=0`), and DELETE mid-send abort all verified. The draft-clear-on-
+  delivery behavior added in ebc49126 still needs one visual check.
 - Last verified build: Pico SDK 2.3.1, zero warnings under -Werror.
   main.c build hash ebc49126
   phantom_link_ap.uf2 681,472 bytes
@@ -58,9 +65,9 @@ CURRENT STATE
   Protocol tests: cmake -S firmware/host -B firmware/host/build -G Ninja
   then cmake --build firmware/host/build and
   ctest --test-dir firmware/host/build --output-on-failure.
-  6 tests: spec, frame, session, wire, handshake, banner.
-- Not implemented: BYE teardown, TX queue, encryption,
-  authentication, replay authentication, SFO, watchdog, persistence.
+  9 tests: spec, frame, session, wire, handshake, msg, reliable, txq, banner.
+- Not implemented: encryption, authentication, replay authentication, SFO,
+  watchdog, persistence.
 - Phantom_Link_rx/ and Phantom_Link_tx/ are rollback/reference only.
 
 DECISIONS (see docs/adr/)
@@ -74,8 +81,12 @@ DECISIONS (see docs/adr/)
 NEXT TASK
 Work the ticket frontier. Read .scratch/phantom-link-v1/issues/ and pick the
 lowest-numbered open ticket whose blockers are all done.
-- 01, 02, 03, 04, 05, 06, 07, and 08 are code-complete; their hardware criteria close with ticket 09.
-- 09 (framing hardware acceptance) is the next gate and needs the boards.
+- 01-06 are code-complete and their hardware criteria close with ticket 09.
+- 07 is code-complete; send, abort, and delivery are hardware-verified. One
+  visual check remains: the draft clears on delivery and survives an abort.
+- 08 is code-complete; the BYE teardown needs its hardware check.
+- 09 (framing hardware acceptance) is the next gate; the risky parts already
+  passed, so finish the remaining T2-T12 rows and close it.
 - 22 (untethered power rig) is unblocked but needs hands on hardware.
 - Do not start a later ticket to "get ahead". The gates exist because crypto
   debugged on unstable framing is how projects die.
