@@ -51,7 +51,7 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 ### Detailed Serial Port Monitoring [Fixed Brownout Issue]
 <img width="1919" height="1079" alt="Screenshot 2026-11-18 190759" src="https://github.com/user-attachments/assets/7f6d1b71-f5da-48eb-a2f0-76118c529705" />
 
-### Custom flash-pico skill + Serial Port Monitoring MCP Server = Hands-free firmware flashing
+### Custom flash-pico Skill + Serial Port Monitoring MCP Server = Hands-Free Firmware Flashing
 <img width="1919" height="1079" alt="Screenshot 2026-11-21 191144" src="https://github.com/user-attachments/assets/c83958bd-5958-401d-9b42-69f0cf50006d" />
 
 
@@ -64,6 +64,6 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 - [x] Create manual sprites for each typable character and symbol for custom font insertion [single-pass].
 - [x] Implement button functionality and menu wrap-around logic
 - [ ] Upgrade payload encryption to Speck Cipher.
-- [ ] Implement MAC-layer steganography (StegoFrameOrder) for stealth signaling.
+- [ ] Implement MAC-layer steganography (StegoFrameOrder-Esque Protocol) for stealth signaling.
 - [ ] Package into enclosure and untether using 2000mah battery bank.
 - [ ] [Undecided/Optional] Dig up antenna trace to solder intel 2.4 ghz antenna on each Pico for signal amplification.
