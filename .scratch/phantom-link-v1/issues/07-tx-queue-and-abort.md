@@ -4,14 +4,14 @@
 
 **Blocked by:** 06
 
-**Status:** ready-for-human (code complete; hardware verification pending)
+**Status:** closed
 
 - [x] DELETE mid-send aborts and the receiver never assembles the aborted message.
 - [x] The UI and input stay responsive during send and abort.
 - [x] A second send after an abort starts cleanly.
 - [x] The baseline non-blocking-send check still passes.
 - [x] Queue depth is bounded and overflow is reported, not silently dropped.
-- [ ] A delivered message clears the sender's draft; an aborted or failed send leaves it on screen.
+- [x] A delivered message clears the sender's draft; an aborted or failed send leaves it on screen.
 
 ## Verification
 
@@ -25,3 +25,13 @@ safety. `ctest` 9/9. Both targets build clean under `-Werror`.
 That run exposed a bool/`err_t` mismatch in `tx_tick` (fixed in `8772dcf`);
 the first build re-sent one frame forever. Draft clearing on delivery was then
 added and needs one hardware check before this ticket closes.
+
+2026-11-21 — hardware PASS on build 54618e9d. User confirms: 21-glyph
+delivery clears the sender's draft; a short-press BACK mid-send aborts with no
+partial text on the receiver and keeps the draft; the following send starts
+cleanly and delivers. Logs show `TX delivered ... attempts=1 retransmits=0`
+and `Secret Msg: HELLO WORLD ABCDEFGHI` with msgdrop=0, retry=0, fail=0.
+
+2026-11-20 — control mapping: the rig has no DELETE label on the OLED. GP12
+BACK is the erase and abort control; use BACK mid-send for the remaining check.
+Firmware keeps DELETE on GP15 as an alias, but hardware instructions use BACK.
