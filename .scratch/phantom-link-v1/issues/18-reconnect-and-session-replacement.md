@@ -11,3 +11,6 @@
 - [ ] Ten consecutive power cycles recover every time.
 - [ ] Backoff is bounded and visible in the log.
 - [ ] A stale session cannot coexist with the replacement.
+- [ ] Replace the ticket 08 STA self-reboot workaround with a real reconnect
+  that does not replay the boot splash. A deliberate `RECONNECTING` HUD state
+  is preferred over silent retries or an unexpected splash.

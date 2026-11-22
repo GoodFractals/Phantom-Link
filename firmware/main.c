@@ -22,12 +22,14 @@
 #include "pico/cyw43_arch.h"
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
+#include "hardware/watchdog.h"
 #include "lwip/udp.h"
 #include "lwip/pbuf.h"
 #include "lwip/netif.h"
 #include "lwip/ip_addr.h"
 #include "lwip/ip4_addr.h"
 #include "lwip/dhcp.h"
+#include "lwip/etharp.h"
 
 #include "oled.h"
 #include "alpha_ui.h"
@@ -82,7 +84,8 @@ static const bool is_ap = (IS_AP != 0);
 
 // --- Base-6 transport alphabet ------------------------------------------------
 // 49 codes: 48 drawable font glyphs plus space. Space is code 0.
-// The font itself has no space glyph; the renderer advances five pixels for it.
+// The font itself has no space glyph; the renderer adds two extra pixels,
+// so words sit three pixels apart.
 static const char GLYPHS[] =
     " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789=+-.,?!()[]\"";
 _Static_assert(sizeof(GLYPHS) - 1 == 49, "transport alphabet must have 49 codes");
@@ -143,6 +146,7 @@ static u16_t peer_port = UDP_PORT;
 static bool peer_valid = false;
 static bool wifi_ready = false;
 static uint32_t last_wifi_retry_ms = 0;
+static bool sta_ever_connected = false;
 static link_state_t link_state = LINK_DOWN;
 static uint32_t last_heard_ms = 0;
 static uint32_t last_hello_ms = 0;
@@ -1131,20 +1135,28 @@ static void input_tick(uint32_t now) {
     last_joy_dr = dr;
     last_joy_dc = dc;
 
-    if (button_pressed(&btn_select, now)) handle_select_button(now);
-    // DELETE and BACK share one action. Poll both before acting so pressing
-    // them together cannot remove two characters on the same tick.
-    bool delete_pressed = button_pressed(&btn_delete, now);
-    bool back_pressed = button_pressed(&btn_back, now);
-    if (delete_pressed || back_pressed) handle_delete_button();
-
-    /* Hold DELETE + BACK for 1.5 s to request a clean teardown. */
+    bool sel_raw = (gpio_get(BTN_SELECT) == 0);
     bool del_raw = (gpio_get(BTN_DELETE) == 0);
     bool back_raw = (gpio_get(BTN_BACK) == 0);
-    if (del_raw && back_raw) {
+    /* Hold both physical buttons together for 2.5 s to request a clean
+     * teardown. The chord cannot fire while typing or erasing, and it does
+     * not depend on joystick orientation or the active page. */
+    bool teardown_hold = sel_raw && (del_raw || back_raw);
+
+    bool select_pressed = button_pressed(&btn_select, now);
+    bool delete_pressed = button_pressed(&btn_delete, now);
+    bool back_pressed = button_pressed(&btn_back, now);
+    if (!teardown_hold) {
+        if (select_pressed) handle_select_button(now);
+        // DELETE and BACK share one action. Poll both before acting so
+        // pressing them together cannot remove two characters on one tick.
+        if (delete_pressed || back_pressed) handle_delete_button();
+    }
+
+    if (teardown_hold) {
         if (teardown_hold_start == 0) teardown_hold_start = now;
         if (!teardown_triggered &&
-            (uint32_t)(now - teardown_hold_start) >= 1500) {
+            (uint32_t)(now - teardown_hold_start) >= 2500) {
             teardown_triggered = true;
             request_teardown("user");
         }
@@ -1208,7 +1220,15 @@ static void wifi_service(uint32_t now) {
         if (ip && !ip4_addr_isany(ip)) {
             if (!wifi_ready) {
                 printf("STA IP: %s\n", ip4addr_ntoa(ip));
+                /* An AP reboot can change its BSSID/L2 mapping. Drop any ARP
+                 * entry learned for the old AP before sending HELLO. */
+                cyw43_arch_lwip_begin();
+#if LWIP_ARP
+                if (netif_default) etharp_cleanup_netif(netif_default);
+#endif
+                cyw43_arch_lwip_end();
                 wifi_ready = true;
+                sta_ever_connected = true;
             }
             last_wifi_retry_ms = now;
         }
@@ -1232,13 +1252,25 @@ static void wifi_service(uint32_t now) {
 
 static void net_tick(uint32_t now) {
     if (link_state == LINK_DOWN) {
-        // Only the STA initiates the handshake; the AP waits and learns the
-        // peer from the received HELLO.
-        if (!is_ap && wifi_ready &&
-            (uint32_t)(now - last_hello_ms) >= HELLO_INTERVAL_MS) {
-            last_hello_ms = now;
-            begin_handshake();
-            send_control_frame(PROTO_TYPE_HELLO);
+        if (!is_ap) {
+            /* The CYW43 can keep a stale association across an AP reboot;
+             * driver-level leave/rejoin and STA-mode resets do not clear it.
+             * A software reboot is the verified recovery path. Ticket 18
+             * should replace this with a proper reconnect strategy. */
+            if (sta_ever_connected &&
+                (uint32_t)(now - last_heard_ms) >= 3 * WIFI_RETRY_MS) {
+                printf("Wi-Fi link stale; rebooting STA to recover\n");
+                sleep_ms(50);
+                watchdog_reboot(0, 0, 0);
+            }
+            // Only the STA initiates the handshake; the AP waits and learns the
+            // peer from the received HELLO.
+            if (wifi_ready &&
+                (uint32_t)(now - last_hello_ms) >= HELLO_INTERVAL_MS) {
+                last_hello_ms = now;
+                begin_handshake();
+                send_control_frame(PROTO_TYPE_HELLO);
+            }
         }
         return;
     }
