@@ -51,8 +51,9 @@ Once the link is established, the TX packages plaintext into a custom C `struct`
 ### Detailed Serial Port Monitoring [Fixed Brownout Issue]
 <img width="1919" height="1079" alt="Screenshot 2026-11-18 190759" src="https://github.com/user-attachments/assets/7f6d1b71-f5da-48eb-a2f0-76118c529705" />
 
-### Creating Custom flash-pico skill w/safety-check for agentic firmware development 
-<img width="1919" height="1079" alt="Screenshot 2026-11-20 202147" src="https://github.com/user-attachments/assets/5e372459-beea-4a08-9a67-2125bf2bbfb4" />
+### Custom flash-pico skill + Serial Port Monitoring MCP Server = Hands-free firmware flashing
+<img width="1919" height="1079" alt="Screenshot 2026-11-21 191144" src="https://github.com/user-attachments/assets/c83958bd-5958-401d-9b42-69f0cf50006d" />
+
 
 
 ## Roadmap
