@@ -4,12 +4,12 @@
 
 **Blocked by:** 14
 
-**Status:** ready-for-agent
+**Status:** ready-for-agent (host green; firmware telemetry in ticket 16)
 
-- [ ] All 24 permutations map deterministically; the 8 unused codes are rejected.
-- [ ] A loopback harness decodes all 16 nibbles correctly on an in-order queue.
-- [ ] CRC8 catches a corrupted burst.
-- [ ] Three repeats resolve to a majority decode.
-- [ ] A repeated or duplicated index inside one burst is rejected.
+- [x] All 24 permutations map deterministically; the 8 unused codes are rejected.
+- [x] A loopback harness decodes all 16 nibbles correctly on an in-order queue.
+- [x] CRC8 catches a corrupted burst.
+- [x] Three repeats resolve to a majority decode.
+- [x] A repeated or duplicated index inside one burst is rejected.
 - [ ] Bounded jitter on the TX scheduler varies inter-frame delay without
   changing protocol timing constants or breaking ACK/retransmit bounds.
