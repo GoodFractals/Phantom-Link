@@ -8,7 +8,7 @@
     deliberately old sequence number and sends it over UDP to the AP. The
     board's replay window must drop it before the application sees it.
 
-    Run this from a PC joined to the Phantom_Link AP network with a static
+    Run this from a PC joined to the Phantom Link AP network (SSID TMOBILE-1219) with a static
     address in 192.168.4.0/24. The PC must not use 192.168.4.1 or .2.
 
     This is a plaintext acceptance probe. It proves replay rejection only;
@@ -167,7 +167,7 @@ $deadline = (Get-Date).AddSeconds(20)
 while (-not (Get-NetIPAddress -AddressFamily IPv4 -IPAddress $BindAddress -ErrorAction SilentlyContinue |
             Where-Object { $_.AddressState -eq 'Preferred' })) {
     if ((Get-Date) -gt $deadline) {
-        throw ("Local address {0} did not reach Preferred state within 20 s. Join the Phantom_Link AP and set a static address in 192.168.4.0/24 first." -f $BindAddress)
+        throw ("Local address {0} did not reach Preferred state within 20 s. Join the TMOBILE-1219 AP and set a static address in 192.168.4.0/24 first." -f $BindAddress)
     }
     Start-Sleep -Milliseconds 300
 }

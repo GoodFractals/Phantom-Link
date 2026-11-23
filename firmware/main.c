@@ -42,6 +42,7 @@
 #include "proto/proto_txq.h"
 #include "proto/proto_crypto.h"
 #include "proto/proto_psk.h"
+#include "proto/proto_lpi.h"
 
 #ifndef IS_AP
 #define IS_AP 1
@@ -56,7 +57,7 @@ static const bool is_ap = (IS_AP != 0);
 #define BTN_DELETE 15
 #define BTN_BACK   12   // wired to the same delete action as BTN_DELETE
 
-#define WIFI_SSID "Phantom_Link"
+#define WIFI_SSID "TMOBILE-1219"
 #define WIFI_PASSWORD "12345678"
 #define UDP_PORT 4444
 
@@ -72,6 +73,8 @@ static const bool is_ap = (IS_AP != 0);
 #define WIFI_RETRY_MS 5000
 #define HELLO_INTERVAL_MS 1000
 #define HEARTBEAT_MS 1000
+#define DECOY_BASE_MS 700u
+#define DECOY_JITTER_MS 300u
 #define LINK_TIMEOUT_MS 3000
 #define SYMBOL_INTERVAL_MS 80
 #define ACK_TIMEOUT_MS 1200
@@ -146,11 +149,24 @@ static uint8_t psk_tx_key[16];
 static uint8_t psk_rx_key[16];
 static uint32_t auth_failures = 0;
 static uint32_t crypto_errors = 0;
+static uint32_t decoy_tx_count = 0;
+static uint32_t last_decoy_ms = 0;
+static uint32_t next_decoy_ms = DECOY_BASE_MS;
 
 static void frame_nonce(uint32_t seq, uint8_t nonce[PC_NONCE_BYTES]) {
     nonce[0] = 0x01u; /* outbound direction */
     memcpy(nonce + 1u, &seq, 4u);
     memset(nonce + 5u, 0, PC_NONCE_BYTES - 5u);
+}
+
+static const uint8_t HEADER_MASK_NONCE[PC_NONCE_BYTES] = {0};
+
+static void mask_header_fields(uint8_t *buf) {
+    pc_ctr_xcrypt(psk_tx_key, HEADER_MASK_NONCE, buf + 6u, 12u);
+}
+
+static void unmask_header_fields(uint8_t *buf) {
+    pc_ctr_xcrypt(psk_rx_key, HEADER_MASK_NONCE, buf + 6u, 12u);
 }
 
 static void psk_derive_keys(void) {
@@ -276,6 +292,7 @@ static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
     if (type == PROTO_TYPE_DATA) frame.flags |= PROTO_FLAG_ENCRYPTED;
 
     status = proto_frame_encode(buf, sizeof buf, &frame, &len);
+    if (status == PROTO_OK) mask_header_fields(buf);
     if (status == PROTO_OK && type == PROTO_TYPE_DATA) {
         uint8_t nonce[PC_NONCE_BYTES];
         frame_nonce(frame.seq, nonce);
@@ -346,18 +363,21 @@ static bool send_control_frame(uint8_t type) {
 
 static bool send_data_frame(const uint8_t *payload, uint8_t payload_len,
                             uint8_t flags) {
+    uint8_t padded[LPI_WIRE_PAYLOAD];
+    err_t err;
+
+    lpi_pad(payload, payload_len, padded, get_rand_32);
     if (peer_valid) {
-        return send_frame_to(&peer_ip, peer_port, PROTO_TYPE_DATA, flags,
-                             payload, payload_len, 0) == ERR_OK;
+        err = send_frame_to(&peer_ip, peer_port, PROTO_TYPE_DATA, flags,
+                            padded, LPI_WIRE_PAYLOAD, 0);
+    } else if (!is_ap) {
+        err = send_frame_to(&ap_addr, UDP_PORT, PROTO_TYPE_DATA, flags,
+                            padded, LPI_WIRE_PAYLOAD, 0);
+    } else {
+        printf("no peer yet; cannot send DATA\n");
+        return false;
     }
-
-    if (!is_ap) {
-        return send_frame_to(&ap_addr, UDP_PORT, PROTO_TYPE_DATA, flags,
-                             payload, payload_len, 0) == ERR_OK;
-    }
-
-    printf("no peer yet; cannot send DATA\n");
-    return false;
+    return err == ERR_OK;
 }
 
 static bool send_ack_frame(uint16_t msg_id, uint8_t next_pos) {
@@ -679,20 +699,31 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
     }
     pbuf_free(p);
 
-    proto_frame_view_t frame;
-    proto_status_t status = proto_frame_decode(buf, wire_len, &frame);
+    uint8_t masked_header[PROTO_HEADER_LEN];
+    proto_frame_view_t frame, masked_view;
+    proto_status_t status;
+
+    memcpy(masked_header, buf, PROTO_HEADER_LEN);
+    status = proto_frame_decode(buf, wire_len, &masked_view);
     if (status != PROTO_OK) {
         rx_bad_frames++;
         printf("RX decode failed: %s\n", proto_status_str(status));
         return;
     }
 
-    if (frame.flags & PROTO_FLAG_ENCRYPTED) {
+    if (masked_view.flags & PROTO_FLAG_ENCRYPTED) {
         uint8_t nonce[PC_NONCE_BYTES];
+        unmask_header_fields(buf);
+        status = proto_frame_decode(buf, wire_len, &frame);
+        if (status != PROTO_OK) {
+            rx_bad_frames++;
+            printf("RX decode failed after unmask: %s\n", proto_status_str(status));
+            return;
+        }
         frame_nonce(frame.seq, nonce);
         if (wire_len != PROTO_HEADER_LEN + frame.payload_len + PROTO_AUTH_LEN ||
             pc_suite_speck_ctr_cmac.open(
-                psk_rx_key, nonce, buf, PROTO_HEADER_LEN,
+                psk_rx_key, nonce, masked_header, PROTO_HEADER_LEN,
                 buf + PROTO_HEADER_LEN, frame.payload_len,
                 buf + PROTO_HEADER_LEN + frame.payload_len) != 0) {
             crypto_errors++;
@@ -708,6 +739,27 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
                    proto_status_str(status), (unsigned)wire_len);
             return;
         }
+        unmask_header_fields(buf);
+        status = proto_frame_decode(buf, wire_len, &frame);
+        if (status != PROTO_OK) {
+            rx_bad_frames++;
+            printf("RX decode failed after unmask: %s\n", proto_status_str(status));
+            return;
+        }
+    }
+
+    if ((frame.flags & PROTO_FLAG_ENCRYPTED) && frame.type == PROTO_TYPE_DATA) {
+        uint8_t real[LPI_WIRE_PAYLOAD];
+        size_t real_len = 0;
+        if (frame.payload_len != LPI_WIRE_PAYLOAD ||
+            !lpi_unpad(buf + PROTO_HEADER_LEN, LPI_WIRE_PAYLOAD,
+                       real, &real_len)) {
+            crypto_errors++;
+            printf("CRYPTO FAIL: bad padding\n");
+            return;
+        }
+        memcpy(buf + PROTO_HEADER_LEN, real, real_len);
+        frame.payload_len = (uint8_t)real_len;
     }
 
     handle_frame(&frame, addr, port);
@@ -1369,6 +1421,16 @@ static void net_tick(uint32_t now) {
         last_ping_ms = now;
         send_control_frame(PROTO_TYPE_PING);
     }
+
+    /* Constant-rate-ish decoy chatter while no user message is in flight.
+     * Control frames only: never DATA, so message assembly and msgdrop stay
+     * untouched. Jitter is bounded and the next delay is chosen up front. */
+    if (!tx_active() && (uint32_t)(now - last_decoy_ms) >= next_decoy_ms) {
+        last_decoy_ms = now;
+        next_decoy_ms = lpi_decoy_delay(DECOY_BASE_MS, DECOY_JITTER_MS,
+                                        get_rand_32);
+        if (send_control_frame(PROTO_TYPE_PING)) decoy_tx_count++;
+    }
 }
 
 // --- Wi-Fi and UDP bring-up ---------------------------------------------------
@@ -1439,14 +1501,14 @@ static void session_stats_tick(uint32_t now) {
     last_session_stats_ms = now;
     printf("SESSION stats: id=0x%08x tx=%u accepted=%u duplicate=%u "
            "stale=%u wrong=%u gap=%u late=%u msg=%u msgdup=%u msgdrop=%u "
-           "retry=%u fail=%u auth=%u crypto=%u\n",
+           "retry=%u fail=%u auth=%u crypto=%u decoy=%u\n",
            (unsigned)session.session_id, (unsigned)session.tx_seq,
            (unsigned)session.accepted, (unsigned)session.duplicates,
            (unsigned)session.stale, (unsigned)session.wrong_session,
            (unsigned)rx_gap, (unsigned)rx_out_of_order,
            (unsigned)rx_msg.completed, (unsigned)rx_msg.duplicates,
            (unsigned)rx_msg.dropped, (unsigned)tx_msg.retransmits,
-           (unsigned)tx_msg.failed, (unsigned)auth_failures, (unsigned)crypto_errors);
+           (unsigned)tx_msg.failed, (unsigned)auth_failures, (unsigned)crypto_errors, (unsigned)decoy_tx_count);
 }
 
 int main(void) {

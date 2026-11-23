@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "proto_crypto.h"
+#include "proto_lpi.h"
 
 static int failures;
 
@@ -332,6 +333,61 @@ static void test_single_bit_tamper(void) {
                                        wire, len, tag) == 0);
 }
 
+static void test_lpi_fixed_length(void) {
+    uint8_t src[63], wire[LPI_WIRE_PAYLOAD], out[63];
+    size_t len, got = 0;
+    static uint32_t state = 1;
+
+    for (len = 0; len <= 63; len++) {
+        size_t i;
+        for (i = 0; i < len; i++) src[i] = (uint8_t)(i ^ len);
+        lpi_pad(src, len, wire, NULL);
+        CHECK(wire[0] == (uint8_t)len);
+        CHECK(lpi_unpad(wire, LPI_WIRE_PAYLOAD, out, &got));
+        CHECK(got == len);
+        if (len) CHECK(memcmp(out, src, len) == 0);
+    }
+    (void)state;
+    wire[0] = 64u;
+    CHECK(!lpi_unpad(wire, LPI_WIRE_PAYLOAD, out, &got));
+}
+
+static uint32_t test_decoy_rng(void) {
+    static uint32_t state = 7u;
+    state = state * 1664525u + 1013904223u;
+    return state;
+}
+
+static void test_decoy_delay(void) {
+    unsigned i;
+    bool saw_variation = false;
+    uint32_t first = lpi_decoy_delay(250u, 100u, test_decoy_rng);
+
+    for (i = 0; i < 1000; i++) {
+        uint32_t d = lpi_decoy_delay(250u, 100u, test_decoy_rng);
+        CHECK(d >= 250u && d < 350u);
+        if (d != first) saw_variation = true;
+    }
+    CHECK(saw_variation);
+    CHECK(lpi_decoy_delay(250u, 0u, test_decoy_rng) == 250u);
+}
+
+static void test_header_mask(void) {
+    static const uint8_t key[16] = {
+        0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
+        0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f
+    };
+    static const uint8_t zero_nonce[PC_NONCE_BYTES] = {0};
+    uint8_t hdr[12] = { 0x11,0x22,0x33,0x44, 0x01,0x00,0x00,0x00,
+                        0x78,0x56,0x34,0x12 };
+    uint8_t original[12];
+    memcpy(original, hdr, sizeof hdr);
+    pc_ctr_xcrypt(key, zero_nonce, hdr, sizeof hdr);
+    CHECK(memcmp(hdr, original, sizeof hdr) != 0);
+    pc_ctr_xcrypt(key, zero_nonce, hdr, sizeof hdr);
+    CHECK(memcmp(hdr, original, sizeof hdr) == 0);
+}
+
 static void test_boot_self_test(void) {
     CHECK(proto_crypto_self_test() == true);
 }
@@ -346,6 +402,9 @@ int main(void) {
     test_ctr_and_suite_round_trip();
     test_key_confirmation();
     test_single_bit_tamper();
+    test_lpi_fixed_length();
+    test_decoy_delay();
+    test_header_mask();
     test_boot_self_test();
 
     if (failures) {

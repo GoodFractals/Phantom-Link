@@ -4,7 +4,7 @@
     One-shot replay acceptance run against the Phantom Link AP.
 
 .DESCRIPTION
-    Creates/uses a Wi-Fi profile for the Phantom_Link AP, connects the named
+    Creates/uses a Wi-Fi profile for the Phantom Link AP (SSID TMOBILE-1219), connects the named
     adapter, assigns a static address in 192.168.4.0/24 with no default
     gateway, runs replay_probe.ps1, then restores DHCP and disconnects.
 
@@ -27,7 +27,7 @@ param(
 
     [string]$InterfaceAlias = 'Wi-Fi 2',
 
-    [string]$Ssid = 'Phantom_Link',
+    [string]$Ssid = 'TMOBILE-1219',
 
     [string]$Password = '12345678',
 

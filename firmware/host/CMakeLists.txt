@@ -26,6 +26,7 @@ add_library(phantom_proto STATIC
     "${PROTO_DIR}/proto_msg.c"
     "${PROTO_DIR}/proto_txq.c"
     "${PROTO_DIR}/proto_crypto.c"
+    "${PROTO_DIR}/proto_lpi.c"
 )
 target_include_directories(phantom_proto PUBLIC "${PROTO_DIR}")
 target_compile_options(phantom_proto PRIVATE ${WARNINGS})
