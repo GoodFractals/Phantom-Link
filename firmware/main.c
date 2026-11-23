@@ -145,6 +145,13 @@ static struct udp_pcb *upcb = NULL;
 static uint8_t psk_tx_key[16];
 static uint8_t psk_rx_key[16];
 static uint32_t auth_failures = 0;
+static uint32_t crypto_errors = 0;
+
+static void frame_nonce(uint32_t seq, uint8_t nonce[PC_NONCE_BYTES]) {
+    nonce[0] = 0x01u; /* outbound direction */
+    memcpy(nonce + 1u, &seq, 4u);
+    memset(nonce + 5u, 0, PC_NONCE_BYTES - 5u);
+}
 
 static void psk_derive_keys(void) {
     static const uint8_t salt[] = "BONNIE-CLYDE-v1";
@@ -266,8 +273,18 @@ static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
     frame.payload_len = payload_len;
     frame.payload = payload;
 
+    if (type == PROTO_TYPE_DATA) frame.flags |= PROTO_FLAG_ENCRYPTED;
+
     status = proto_frame_encode(buf, sizeof buf, &frame, &len);
-    if (status == PROTO_OK) status = proto_frame_put_crc(buf, len);
+    if (status == PROTO_OK && type == PROTO_TYPE_DATA) {
+        uint8_t nonce[PC_NONCE_BYTES];
+        frame_nonce(frame.seq, nonce);
+        pc_suite_speck_ctr_cmac.seal(psk_tx_key, nonce, buf, PROTO_HEADER_LEN,
+                                     buf + PROTO_HEADER_LEN, payload_len,
+                                     buf + PROTO_HEADER_LEN + payload_len);
+    } else if (status == PROTO_OK) {
+        status = proto_frame_put_crc(buf, len);
+    }
     if (status != PROTO_OK) {
         printf("TX encode failed: %s\n", proto_status_str(status));
         return ERR_VAL;
@@ -662,24 +679,35 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
     }
     pbuf_free(p);
 
-    proto_status_t status = proto_frame_check_crc(buf, wire_len);
+    proto_frame_view_t frame;
+    proto_status_t status = proto_frame_decode(buf, wire_len, &frame);
     if (status != PROTO_OK) {
-        if (status == PROTO_ERR_TYPE) {
-            rx_unknown_type++;
-        } else {
-            rx_bad_frames++;
-        }
-        printf("RX rejected frame: %s (%u bytes)\n", proto_status_str(status),
-               (unsigned)wire_len);
+        rx_bad_frames++;
+        printf("RX decode failed: %s\n", proto_status_str(status));
         return;
     }
 
-    proto_frame_view_t frame;
-    status = proto_frame_decode(buf, wire_len, &frame);
-    if (status != PROTO_OK) {
-        rx_bad_frames++;
-        printf("RX decode failed after CRC: %s\n", proto_status_str(status));
-        return;
+    if (frame.flags & PROTO_FLAG_ENCRYPTED) {
+        uint8_t nonce[PC_NONCE_BYTES];
+        frame_nonce(frame.seq, nonce);
+        if (wire_len != PROTO_HEADER_LEN + frame.payload_len + PROTO_AUTH_LEN ||
+            pc_suite_speck_ctr_cmac.open(
+                psk_rx_key, nonce, buf, PROTO_HEADER_LEN,
+                buf + PROTO_HEADER_LEN, frame.payload_len,
+                buf + PROTO_HEADER_LEN + frame.payload_len) != 0) {
+            crypto_errors++;
+            printf("CRYPTO FAIL: bad tag (%u bytes)\n", (unsigned)wire_len);
+            return;
+        }
+    } else {
+        status = proto_frame_check_crc(buf, wire_len);
+        if (status != PROTO_OK) {
+            if (status == PROTO_ERR_TYPE) rx_unknown_type++;
+            else rx_bad_frames++;
+            printf("RX rejected frame: %s (%u bytes)\n",
+                   proto_status_str(status), (unsigned)wire_len);
+            return;
+        }
     }
 
     handle_frame(&frame, addr, port);
@@ -1411,14 +1439,14 @@ static void session_stats_tick(uint32_t now) {
     last_session_stats_ms = now;
     printf("SESSION stats: id=0x%08x tx=%u accepted=%u duplicate=%u "
            "stale=%u wrong=%u gap=%u late=%u msg=%u msgdup=%u msgdrop=%u "
-           "retry=%u fail=%u auth=%u\n",
+           "retry=%u fail=%u auth=%u crypto=%u\n",
            (unsigned)session.session_id, (unsigned)session.tx_seq,
            (unsigned)session.accepted, (unsigned)session.duplicates,
            (unsigned)session.stale, (unsigned)session.wrong_session,
            (unsigned)rx_gap, (unsigned)rx_out_of_order,
            (unsigned)rx_msg.completed, (unsigned)rx_msg.duplicates,
            (unsigned)rx_msg.dropped, (unsigned)tx_msg.retransmits,
-           (unsigned)tx_msg.failed, (unsigned)auth_failures);
+           (unsigned)tx_msg.failed, (unsigned)auth_failures, (unsigned)crypto_errors);
 }
 
 int main(void) {

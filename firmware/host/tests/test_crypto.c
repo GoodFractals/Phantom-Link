@@ -231,7 +231,7 @@ static void test_ctr_and_suite_round_trip(void) {
     static const uint8_t nonce[PC_NONCE_BYTES] = {
         0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c
     };
-    static const uint8_t aad[18] = {
+    uint8_t aad[18] = {
         0x42,0x43,0x01,0x02,0x00,0x00,0x11,0x22,0x33,0x44,
         0x00,0x00,0x00,0x05,0x00,0x00,0x00,0x00
     };
@@ -254,6 +254,10 @@ static void test_ctr_and_suite_round_trip(void) {
     CHECK(pc_suite_speck_ctr_cmac.open(key, nonce, aad, sizeof aad,
                                        wire, sizeof wire, tag) != 0);
     CHECK(pc_suite_aead.seal == NULL || pc_suite_aead.open == NULL);
+
+    aad[0] ^= 0x01u;
+    CHECK(pc_suite_speck_ctr_cmac.open(key, nonce, aad, sizeof aad,
+                                       wire, sizeof wire, tag) != 0);
 }
 
 static void test_key_confirmation(void) {
