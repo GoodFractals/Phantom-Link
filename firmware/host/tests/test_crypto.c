@@ -285,6 +285,53 @@ static void test_key_confirmation(void) {
     CHECK(!pc_confirm_check(key_a, 0x01u, session, 0u, nonce, bad));
 }
 
+static void test_single_bit_tamper(void) {
+    static const uint8_t key[16] = {
+        0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
+        0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f
+    };
+    static const uint8_t nonce[PC_NONCE_BYTES] = {
+        0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c
+    };
+    uint8_t aad[18], wire[21], tag[PC_TAG_BYTES];
+    uint8_t bad_aad[18], bad_wire[21], bad_tag[PC_TAG_BYTES];
+    size_t i, len = sizeof wire;
+    unsigned bit;
+
+    for (i = 0; i < sizeof aad; i++) aad[i] = (uint8_t)i;
+    for (i = 0; i < len; i++) wire[i] = (uint8_t)(0x40u + (uint8_t)i);
+    pc_suite_speck_ctr_cmac.seal(key, nonce, aad, sizeof aad, wire, len, tag);
+
+    for (i = 0; i < sizeof aad; i++) {
+        for (bit = 0; bit < 8u; bit++) {
+            memcpy(bad_aad, aad, sizeof aad);
+            bad_aad[i] ^= (uint8_t)(1u << bit);
+            CHECK(pc_suite_speck_ctr_cmac.open(key, nonce, bad_aad, sizeof aad,
+                                               wire, len, tag) != 0);
+        }
+    }
+    for (i = 0; i < len; i++) {
+        for (bit = 0; bit < 8u; bit++) {
+            memcpy(bad_wire, wire, len);
+            bad_wire[i] ^= (uint8_t)(1u << bit);
+            CHECK(pc_suite_speck_ctr_cmac.open(key, nonce, aad, sizeof aad,
+                                               bad_wire, len, tag) != 0);
+        }
+    }
+    for (i = 0; i < sizeof tag; i++) {
+        for (bit = 0; bit < 8u; bit++) {
+            memcpy(bad_tag, tag, sizeof tag);
+            bad_tag[i] ^= (uint8_t)(1u << bit);
+            CHECK(pc_suite_speck_ctr_cmac.open(key, nonce, aad, sizeof aad,
+                                               wire, len, bad_tag) != 0);
+        }
+    }
+
+    /* A valid frame immediately after all rejections still opens. */
+    CHECK(pc_suite_speck_ctr_cmac.open(key, nonce, aad, sizeof aad,
+                                       wire, len, tag) == 0);
+}
+
 static void test_boot_self_test(void) {
     CHECK(proto_crypto_self_test() == true);
 }
@@ -298,6 +345,7 @@ int main(void) {
     test_kdf_domain_separation();
     test_ctr_and_suite_round_trip();
     test_key_confirmation();
+    test_single_bit_tamper();
     test_boot_self_test();
 
     if (failures) {
