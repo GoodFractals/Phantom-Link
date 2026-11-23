@@ -1,0 +1,19 @@
+{
+  "_comment": "BOOTSEL enrollment for self-flashing. The Pico 2 W bootloader exposes volume label RP2350; match on the USB serial to tell the boards apart.",
+  "boards": {
+    "ap": {
+      "role": "AP",
+      "name": "Barebones",
+      "com": "COM5",
+      "bootsel_usb_serial": "07A06CFD644C1FC9",
+      "uf2": "firmware/build/phantom_link_ap.uf2"
+    },
+    "sta": {
+      "role": "STA",
+      "name": "Jank Box 5000",
+      "com": "COM4",
+      "bootsel_usb_serial": "0AC087FCD9AAE588",
+      "uf2": "firmware/build/phantom_link_sta.uf2"
+    }
+  }
+}

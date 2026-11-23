@@ -1,7 +1,37 @@
+# Build trees (root, firmware/, and any nested target)
 build/
+firmware/build/
+
+# Archived hardware artifacts, never commit UF2s
+artifacts/
+
+# Compiler / linker outputs
 *.uf2
 *.elf
 *.bin
+*.hex
 *.map
+*.o
+*.obj
+*.d
+*.a
+*.pdb
+
+# CMake / Ninja state
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+.ninja_deps
+.ninja_log
+compile_commands.json
+
+# Python host-test caches
+__pycache__/
+*.pyc
+
+# Serial monitor captures
+logs/
+
+# Editor / vendor SDK checkouts
 .vscode/
 u8g2/

@@ -1,0 +1,127 @@
+You are a senior embedded systems engineer continuing the Phantom Link
+project. Read these before proposing code, in this order:
+
+1. AGENTS.md          build commands and hard rules
+2. GLOSSARY.md        the project's fixed vocabulary
+3. docs/GAMEPLAN.md   authoritative plan, frame spec, test matrix
+4. docs/NON_UI_GAMEPLAN.md  non-UI/UX roadmap and two-sided task split
+5. .scratch/phantom-link-v1/spec.md and issues/
+6. README.md          what exists today
+
+The code is the source of truth. The gameplan describes what to build next;
+the tickets are the executable backlog.
+
+REPO: https://github.com/GoodFractals/Phantom-Link
+COMMIT: 1b916f1
+BRANCH: poc/handshake (not pushed yet)
+FALLBACK TAG: poc/plaintext-v1  (known-good plaintext build)
+
+HARDWARE
+- 2x Raspberry Pi Pico 2 W (RP2350 + CYW43439)
+- Both boards carry the identical BOM:
+  - Inland 1.3" SH1106 128x64 SPI OLED: CLK GP18, MOSI GP19, RES GP20,
+    DC GP16, CS GP17, +2 column offset
+  - PSP-1000 joystick: X GP26/ADC0, Y GP27/ADC1
+  - SELECT GP14, DELETE GP15, BACK GP12, all to GND with internal pull-ups
+- AP board: Barebones (host, Clyde)
+- STA board: Jank Box 5000 (client, Bonnie)
+- Each rig runs from a 2000 mAh USB power bank zip-tied under the breadboard.
+  No enclosure, no battery-sense hardware; the pack LEDs are the gauge.
+
+CURRENT STATE
+- One firmware/main.c, two targets. IS_AP selects only the Wi-Fi role; the
+  OLED, ADC joystick, buttons, input polling, codec, parser, and render path
+  are unconditional in both builds.
+- Wi-Fi bring-up is non-blocking. Static STA address 192.168.4.2/24 because
+  the SDK 2.3.1 AP build has no DHCP server (CYW43_NETUTILS=0).
+- Numeric-page HUD: four RSSI bars on the STA, link square beside LINK. The
+  AP has no per-client RSSI, so its signal cell stays empty until the STA
+  relays a reading. BAT: is reserved and has no sense path.
+- 49-code 3-digit Base-6 character encoding inside typed frames: 18-byte
+  header, CRC32 auth field, HELLO/HELLO_ACK/PING/PONG/DATA, FINAL ends a
+  message. Peer learning, 1 s heartbeat, 3 s timeout, non-blocking TX,
+  boot splash.
+- Session layer: hardware-random session ID per handshake (get_rand_32),
+  per-direction sequence from 0, 32-bit sliding replay window, duplicate and
+  stale counters, sequence-gap message invalidation, 30 s SESSION stats line.
+- Reliable messages: position-indexed DATA frames, ACKs at every 8th frame and
+  the FINAL, suffix retransmit from the first hole, duplicate suppression,
+  20-attempt bound with a NO ACK notice, bounded 64-deep TX queue drained by
+  the main loop. DELETE mid-send aborts and drains.
+- BYE teardown: hold **both buttons (select + delete/back) together for 2.5 s**;
+  the peer drops to NO LINK immediately. The 3 s timeout path still covers a
+  power-cycle without BYE. The STA re-issues `connect_async` if a transient
+  Wi-Fi state lasts WIFI_RETRY_MS, so an AP reboot cannot park it in `joining`.
+- The framed/session/reliable build is on hardware: LINK UP, bidirectional
+  typed messages, per-frame ACKs, retry/delivery (`TX delivered ... attempt=1
+  retransmits=0`), and DELETE mid-send abort all verified. The draft-clear-on-
+  delivery behavior added in ebc49126 still needs one visual check.
+- OLED space advance is 2 px extra (3 blank pixels between words; 1 px between
+  letters) as of build 05ce2908. T2 visual check passed on hardware 2026-11-20.
+  The change is in firmware/oled.h + a main.c comment and is still uncommitted;
+  commit it with ticket 09.
+- Last verified build: Pico SDK 2.3.1, zero warnings under -Werror.
+  main.c build hash 05ce2908
+  phantom_link_ap.uf2 681,472 bytes
+  SHA256 6A39C9AA097A5DA07A7C1FDEC80A37103779FC1B475EAB032703E31A11BEF977
+  phantom_link_sta.uf2 687,616 bytes
+  SHA256 7745C6C34B45E20EBD8209F34A313BEFF6BFE330D6A5C9ECFEAD23FCE327E89A
+  Rebuild rather than trusting these hashes; they move with every commit.
+- Live pair 2026-11-20: build 05ce2908, session 0x3a85d7cf, both sides linked
+  with duplicate=0 stale=0 wrong=0 gap=0 msgdrop=0. COM assignments follow the
+  USB serial (AP 07A06CFD644C1FC9 = COM5, STA 0AC087FCD9AAE588 = COM4).
+- Flashing: global skill `flash-picos` plus tools/flash_pico.ps1 and
+  tools/board_map.json. BOOTSEL volume is RP2350. The helper auto-identifies a
+  board by serial; ask yes/no before writing. `picotool` can reset/verify over
+  USB by serial, but this build rejects --ser on `load`, so a no-unplug reflash
+  needs the other board disconnected.
+- The AP's radio failed from one rear Optiplex USB port while its UI stayed
+  responsive and its flash verified OK; swapping to the other board's port
+  restored it. Suspect the power path before firmware or the CYW43. Logged in
+  issue 22.
+- Host validation: python firmware/tests/validate_assets.py
+  Expected final line: HOST VALIDATION: PASS.
+  Protocol tests: cmake -S firmware/host -B firmware/host/build -G Ninja
+  then cmake --build firmware/host/build and
+  ctest --test-dir firmware/host/build --output-on-failure.
+  9 tests: spec, frame, session, wire, handshake, msg, reliable, txq, banner.
+- Not implemented: encryption, authentication, replay authentication, SFO,
+  watchdog, persistence.
+- Phantom_Link_rx/ and Phantom_Link_tx/ are rollback/reference only.
+
+DECISIONS (see docs/adr/)
+- Speck128/128 CTR + CMAC, behind a cipher-agnostic interface with an AEAD slot.
+- SFO is application-layer and telemetry-only. No MAC-layer SFO is possible
+  with cyw43; do not claim it.
+- No battery-sense hardware and no enclosure.
+- Strictly two-party. Membership is physical possession; group support is a
+  non-goal, not a missing feature.
+
+NEXT TASK
+Work the ticket frontier. Read .scratch/phantom-link-v1/issues/ and pick the
+lowest-numbered open ticket whose blockers are all done.
+- 01-06 are code-complete and their hardware criteria close with ticket 09.
+- 07 is code-complete; send, abort, and delivery are hardware-verified. One
+  visual check remains: the draft clears on delivery and survives an abort.
+- 08 is code-complete; the BYE teardown needs its hardware check.
+- 09 (framing hardware acceptance) is the next gate; T2 passed on 05ce2908,
+  finish T3-T12 plus the replay rerun with the current session ID.
+- 22 (untethered power rig) is unblocked but needs hands on hardware; a USB
+  port/cable sensitivity finding is already logged in its verification section.
+- 28 (link-state visual reference) is non-urgent UI polish, blocked by 25.
+- The numeric page will be rebuilt from scratch by the user later; keep it in
+  UI polish after 25/28 and do not disturb proto_* or timing constants.
+- Do not start a later ticket to "get ahead". The gates exist because crypto
+  debugged on unstable framing is how projects die.
+
+RULES
+- One ticket, one commit, named after the ticket number.
+- A ticket is done when its acceptance criteria pass on hardware, not when
+  it compiles.
+- If a change breaks a baseline item in docs/GAMEPLAN.md §2, revert it.
+- Do not rewrite the UI art until ticket 24. UI work may not touch proto_*,
+  net_link.c, or timing constants.
+- Do not claim "encrypted" or "covert" in docs until the relevant ticket is
+  green on hardware.
+- Ask for serial logs and photos when a hardware result is ambiguous.
+- Keep the Project Bible out of the public repo (personal data).

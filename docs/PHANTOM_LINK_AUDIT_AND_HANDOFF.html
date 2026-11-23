@@ -1,0 +1,1392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phantom Link — Audit, Remediation Plan &amp; AI Handoff</title>
+<style>
+  :root{
+    --ink:#17202a; --muted:#5b6573; --line:#d0d5dd; --soft:#f2f4f7;
+    --p0:#b42318; --p1:#b54708; --p2:#175cd3; --ok:#067647; --purple:#6941c6;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:#e9ecf0;color:var(--ink);font:16px/1.62 "Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  main{max-width:1180px;margin:0 auto;background:#fff;padding:52px 60px 100px;box-shadow:0 0 0 1px #dfe3e8}
+  h1{font-size:44px;line-height:1.08;letter-spacing:-.025em;margin:6px 0 12px}
+  h2{font-size:27px;line-height:1.2;margin:52px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line);letter-spacing:-.01em}
+  h3{font-size:19px;margin:30px 0 8px}
+  h4{font-size:16px;margin:22px 0 6px}
+  p{margin:9px 0}
+  a{color:#175cd3}
+  .kicker{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--p0)}
+  .subtitle{font-size:18px;color:#344054;max-width:900px}
+  .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:26px 0 8px}
+  .meta div{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fcfcfd}
+  .meta b{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .toc{columns:2;column-gap:34px;border:1px solid var(--line);border-radius:10px;padding:16px 20px;background:#fcfcfd;margin:26px 0 8px}
+  .toc a{display:block;text-decoration:none;padding:3px 0;font-size:14px;break-inside:avoid}
+  .toc a:hover{text-decoration:underline}
+  .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:800;color:#fff;letter-spacing:.02em;white-space:nowrap}
+  .b0{background:var(--p0)} .b1{background:var(--p1)} .b2{background:var(--p2)} .bok{background:var(--ok)} .bpur{background:var(--purple)}
+  table{width:100%;border-collapse:collapse;margin:14px 0 26px;font-size:13.5px}
+  th{background:var(--soft);text-align:left;font-size:12px;letter-spacing:.03em;text-transform:uppercase;color:#344054}
+  th,td{border:1px solid var(--line);padding:9px 11px;vertical-align:top}
+  tr:nth-child(even) td{background:#fcfcfd}
+  td code, p code, li code{background:var(--soft);padding:1px 5px;border-radius:4px;font-size:.9em;white-space:nowrap}
+  pre{background:#101828;color:#e4e7ec;padding:16px 18px;border-radius:9px;overflow:auto;font:13px/1.55 Consolas,"Cascadia Mono","Courier New",monospace;margin:14px 0 24px}
+  pre code{background:none;padding:0;color:inherit;white-space:pre}
+  .callout{border-left:5px solid;border-radius:0 9px 9px 0;padding:13px 17px;margin:18px 0;background:#f9fafb}
+  .bad{border-color:var(--p0);background:#fef3f2}
+  .warn{border-color:var(--p1);background:#fffaeb}
+  .info{border-color:var(--p2);background:#eff8ff}
+  .good{border-color:var(--ok);background:#ecfdf3}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:16px 0}
+  .card{border:1px solid var(--line);border-radius:9px;padding:14px 16px;background:#fff}
+  .card h4{margin:0 0 6px}
+  .card p{margin:4px 0;font-size:14px;color:#344054}
+  ul,ol{margin:8px 0 8px 22px;padding:0}
+  li{margin:4px 0}
+  .small{font-size:13px;color:var(--muted)}
+  .divider{height:1px;background:var(--line);margin:34px 0}
+  .seq{background:#0f172a;color:#dbe4ee;padding:18px;border-radius:9px;font:13px/1.5 Consolas,monospace;white-space:pre;overflow:auto}
+  .check{list-style:none;margin-left:0}
+  .check li{padding-left:26px;position:relative}
+  .check li:before{content:"☐";position:absolute;left:0;font-size:17px;color:#475467}
+  .pill{display:inline-block;background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:12px;margin:1px 2px}
+  @media(max-width:760px){
+    main{padding:26px 18px 70px}
+    h1{font-size:32px} h2{font-size:23px}
+    .toc{columns:1}
+    table{font-size:12px}
+    th,td{padding:7px}
+  }
+  @media print{
+    body{background:#fff}
+    main{box-shadow:none;max-width:none;padding:0}
+    .noprint{display:none}
+    a{color:#000;text-decoration:none}
+    h2{page-break-after:avoid}
+    h3,h4{page-break-after:avoid}
+    tr{page-break-inside:avoid}
+    pre{white-space:pre-wrap;word-break:break-word}
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header class="doc-head">
+  <div class="kicker">Forensic audit · remediation plan · AI handoff</div>
+  <h1>Phantom Link</h1>
+  <p class="subtitle">Everything verified wrong as of commit <code>a5ee129</code>, the exact path to a handshake-first proof of concept, and the packet you hand the next AI context window so it starts with memory instead of amnesia.</p>
+  <div class="meta">
+    <div><b>Repository</b>GoodFractals/Phantom-Link</div>
+    <div><b>Branch / commit</b>main · a5ee129</div>
+    <div><b>Commit date</b>2026-11-15 17:31:32 -0800</div>
+    <div><b>Audit date</b>2026-11-18</div>
+    <div><b>Scope</b>Both firmware trees, shared headers, assets, CMake, lwIP config, README</div>
+    <div><b>Method</b>Static review, git diff, byte/table validation, file-hash comparison</div>
+    <div><b>Hardware tested this session</b>No — hardware claims below are marked reported vs. code-verified</div>
+    <div><b>Source of truth</b>Code &gt; this document &gt; README &gt; Project Bible</div>
+  </div>
+</header>
+
+<div class="callout info">
+  <strong>How to use this document.</strong> Read §1–§3 to get oriented. Use §4 as the defect register. Use §5 for the protocol/UI designs that resolve the hard defects. Use §6–§8 as the build order and acceptance criteria. Use §10 as the copy-paste handoff for a new context window. The HTML is self-contained; print it to PDF with <em>Ctrl+P → Save as PDF</em> if you need a portable copy.
+</div>
+
+<div class="callout good">
+  <strong>Post-audit implementation (2026-11-18).</strong> A unified <code>firmware/</code> tree now exists: one <code>main.c</code>, one <code>oled.h</code>, and two CMake targets (<code>phantom_link_ap</code> with <code>IS_AP=1</code>, <code>phantom_link_sta</code> with <code>IS_AP=0</code>). Both UF2s build warning-free from that source with Pico SDK 2.3.1 on native Windows (Arm GNU Toolchain 14.2): <code>firmware/build/phantom_link_ap.uf2</code> is 670,720 bytes and <code>firmware/build/phantom_link_sta.uf2</code> is 677,376 bytes. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC joystick, buttons, input polling, codec, parser, and render path are unconditional, and Wi-Fi bring-up is non-blocking. The source implements the 49-code 3-digit Base-6 transport, exact control-token parsing, <code>HELLO</code>/<code>HELLO_ACK</code>/<code>LINK_PING</code>/<code>LINK_PONG</code>, peer learning from <code>addr</code>, a 1 s heartbeat, a 3 s timeout, and a non-blocking TX state machine. Host validation passed for the 48-glyph/180-byte font, all 49 codec values, a 21-character round-trip, <code>V</code> reachability, the corrected numeric hitboxes, and the unconditional input/UI path. <strong>No board was connected, so the hardware acceptance tests T2-T12 remain pending.</strong> Pixel-level OCR of the baked art also corrected three UI facts below: numeric <code>SOS</code> is on row 2, numeric bottom-right is the <code>LINK</code> indicator (not punctuation), and the alpha <code>WXYZ</code> group gains <code>V</code> as a fifth tap. See the corrected §5.4.
+</div>
+
+<nav class="toc" aria-label="Table of contents">
+  <a href="#s1">1. Executive summary</a>
+  <a href="#s2">2. Verified baseline and evidence</a>
+  <a href="#s3">3. Architecture decision: one firmware, two roles</a>
+  <a href="#s4">4. Defect register (52 items)</a>
+  <a href="#s5">5. Deep dives and reference designs</a>
+  <a href="#s6">6. Phase-by-phase remediation plan</a>
+  <a href="#s7">7. Exact build, flash, serial, and git commands</a>
+  <a href="#s8">8. Acceptance test matrix</a>
+  <a href="#s9">9. README / Bible truth audit</a>
+  <a href="#s10">10. New-context handoff packet</a>
+  <a href="#s11">11. Risk register</a>
+  <a href="#a1">A. File inventory</a>
+  <a href="#a2">B. Pin map</a>
+  <a href="#a3">C. Protocol token table</a>
+  <a href="#a4">D. Evidence commands</a>
+  <a href="#a5">E. Glossary</a>
+</nav>
+
+<h2 id="s1">1. Executive summary</h2>
+
+<div class="callout good">
+  <strong>Bottom line:</strong> Phantom Link is a real prototype with a working custom OLED UI, a working variable-width font pipeline, and a Base-6 codec whose arithmetic is correct. It is <em>not</em> yet a link, a handshake, or an encrypted device. The single biggest problem is not a missing feature — it is that the repository contains two divergent firmwares, and the one labeled TX is an older, protocol-incompatible snapshot that cannot type or send. Fix that first; everything else follows.
+</div>
+
+<div class="grid">
+  <div class="card"><h4>UI &amp; asset pipeline <span class="badge b1">AMBER</span></h4><p>128×64 SH1106 driver, 1024-byte framebuffer, variable-width font, joystick and multi-tap input exist. Numeric page is half-wired; text rendering has a y-offset bug; boot art is unused.</p></div>
+  <div class="card"><h4>Base-6 codec <span class="badge bok">GREEN</span></h4><p>The high/low math is correct for A–Z. The transport is A–Z only, so space, digits, and punctuation corrupt. Two digits cannot represent the 49-character UI (48 glyphs + space); three digits can.</p></div>
+  <div class="card"><h4>Link &amp; handshake <span class="badge b0">RED</span></h4><p>No HELLO, no ACK, no peer address, no link state, no heartbeat, no timeout, no CRC. Sends are blind and the serial monitor can print success while the packet dies in lwIP.</p></div>
+  <div class="card"><h4>Encryption <span class="badge b0">RED</span></h4><p>Not implemented. <code>PhantomPacket</code> and <code>calculate_crc()</code> are dead code. The README’s “encrypted / XOR cipher / packed struct / sync word” claims are ahead of the firmware.</p></div>
+  <div class="card"><h4>Reproducibility <span class="badge b1">AMBER</span></h4><p>No license, CI, tests, wiring doc, or UI image converter. The only PNG script generates fonts. Two duplicate trees and tracked intermediate images.</p></div>
+  <div class="card"><h4>Documentation truth <span class="badge b0">RED</span></h4><p>README contradicts the code on AP role, static IP, encryption, framing, and “raw RF.” The Bible’s immediate-next-step list is two milestones stale.</p></div>
+</div>
+
+<h3>What is genuinely working</h3>
+<ul>
+  <li><strong>Framebuffer + SH1106 SPI driver.</strong> 1024-byte buffer, page writes, +2 column offset, pixel/box/bitmap primitives. The three UI images are exactly 1024 bytes each; the font table is internally consistent at 179 bytes / 49 widths / 49 offsets.</li>
+  <li><strong>The Base-6 arithmetic.</strong> <code>high = idx / 6</code>, <code>low = idx % 6</code>, <code>decoded = 'A' + high*6 + low</code> is correct for A–Z. The screenshot sequence <code>PONG PING SYNC SYNC PONG PING END</code> decodes to 3,0 / 2,2 / 3,0 = S O S.</li>
+  <li><strong>UI/input foundation.</strong> Joystick navigation, two buttons with pull-ups and debounce, multi-tap group logic, alpha/numeric pages, and PNG-to-C assets exist.</li>
+  <li><strong>Role plumbing in intent.</strong> The comment <code>SET TO 1 FOR THE JANK BOX (AP) / SET TO 0 FOR THE RX PICO (STA)</code> is the correct architecture. The implementation just drifted into two folders.</li>
+</ul>
+
+<h3>What must happen next, in one sentence</h3>
+<p><strong>Collapse both boards onto one <code>main.c</code> with an <code>IS_AP</code> build flag, port the input loop to the AP build, then add <code>HELLO/HELLO_ACK/LINK_PING/LINK_PONG</code> with peer learning and a 3-second heartbeat before touching encryption or true MAC-layer SFO.</strong></p>
+
+<h2 id="s2">2. Verified baseline and evidence</h2>
+
+<table class="kv">
+  <tr><td>Repository</td><td><code>https://github.com/GoodFractals/Phantom-Link.git</code></td></tr>
+  <tr><td>Branch</td><td><code>main</code>, tracking <code>origin/main</code>; no other local branches; no tags</td></tr>
+  <tr><td>HEAD</td><td><code>a5ee129155453326000c64300e7542c5a2ebfdcf</code> — “feat: Add RX Base-6 decoder and UI updates”</td></tr>
+  <tr><td>Commit count</td><td>34</td></tr>
+  <tr><td>Tracked files</td><td>35 total: 17 in <code>Phantom_Link_rx</code>, 16 in <code>Phantom_Link_tx</code>, plus root <code>.gitignore</code> and <code>README.md</code></td></tr>
+  <tr><td>Ignored</td><td><code>build/</code>, <code>*.uf2</code>, <code>*.elf</code>, <code>*.bin</code>, <code>*.map</code>, <code>.vscode/</code>, <code>u8g2/</code></td></tr>
+  <tr><td>Working tree</td><td>Clean at audit time</td></tr>
+  <tr><td>Build outputs present</td><td><code>Phantom_Link_tx/build/phantom_link_tx.uf2</code> (11/15 16:16), <code>Phantom_Link_rx/build/phantom_link_rx.uf2</code> (11/15 17:21)</td></tr>
+  <tr><td>Toolchain</td><td>Audit assumed WSL Ubuntu. Post-audit build verified natively on Windows: Pico SDK 2.3.1, CMake 4.0.0-rc1, Ninja 1.13.2, Arm GNU Toolchain 14.2, <code>PICO_BOARD=pico2_w</code>. WSL remains an alternative, but it was unavailable on the build machine after the audit.</td></tr>
+  <tr><td>Hardware</td><td>2× Raspberry Pi Pico 2 W; 2× Inland 1.3&quot; SH1106 128×64 SPI OLED; PSP-1000 analog joystick; SELECT GP14, DELETE GP15, BACK GP12, active-low to GND with internal pull-ups</td></tr>
+</table>
+
+<h3>File-hash comparison</h3>
+<p>Every shared header and asset is byte-identical between the two trees. Only <code>main.c</code>, <code>CMakeLists.txt</code>, and the presence of a local <code>.gitignore</code> differ:</p>
+
+<table>
+  <thead><tr><th>File</th><th>RX tree</th><th>TX tree</th><th>Result</th></tr></thead>
+  <tbody>
+    <tr><td><code>alpha_ui.h</code>, <code>numeric_ui.h</code>, <code>boot_ui.h</code></td><td>1024 bytes</td><td>1024 bytes</td><td><span class="badge bok">IDENTICAL</span></td></tr>
+    <tr><td><code>font_ui.h</code></td><td>179 bytes, 49 glyphs</td><td>179 bytes, 49 glyphs</td><td><span class="badge bok">IDENTICAL</span></td></tr>
+    <tr><td><code>oled.h</code>, <code>lwipopts.h</code>, <code>pico_sdk_import.cmake</code>, <code>png2c.py</code></td><td>—</td><td>—</td><td><span class="badge bok">IDENTICAL</span></td></tr>
+    <tr><td><code>alpha.png</code>, <code>numeric.png</code>, <code>boot.png</code>, <code>font_sheet.png</code>, <code>prepared_font.png</code>, <code>test_font.png</code></td><td>—</td><td>—</td><td><span class="badge bok">IDENTICAL</span></td></tr>
+    <tr><td><code>main.c</code></td><td>352 lines</td><td>262 lines</td><td><span class="badge b0">DIFFERS: +34 / −124</span></td></tr>
+    <tr><td><code>CMakeLists.txt</code></td><td>project <code>phantom_link_rx</code></td><td>project <code>phantom_link_tx</code></td><td><span class="badge b1">DIFFERS (expected)</span></td></tr>
+  </tbody>
+</table>
+
+<div class="callout bad">
+  <strong>The diff is the smoking gun.</strong> The TX tree is not a role variant; it is the RX tree from before the Base-6 work. It sends one packet per character, has no STA branch, has no input loop, and decodes one symbol per character. The two boards therefore speak different protocols. The RX tree is the live code; the TX tree must be replaced, not patched in place.
+</div>
+
+<h3>Asset and table validation</h3>
+<ul>
+  <li><code>alpha_image[1024]</code>, <code>numeric_image[1024]</code>, <code>boot_image[1024]</code>: all exactly 1024 bytes. The <code>memcpy(..., 1024)</code> calls are safe for the two images actually used.</li>
+  <li><code>font_image[]</code>: 179 bytes; <code>font_widths[49]</code>; <code>font_offsets[49]</code>; offsets are exactly cumulative; <code>Σ widths = 179</code>. No table overflow.</li>
+  <li><code>font_char_count = 49</code>, but the renderer maps only indices 0–47. Index 48 is an orphaned second half of the double-quote; see §5.5.</li>
+  <li><code>boot_ui.h</code> is never included and <code>boot_image</code> is never referenced. The boot splash does not exist in firmware.</li>
+  <li>Both <code>main.c</code> files and <code>oled.h</code> lack a trailing newline. The RX <code>main.c</code> line 1 begins with a stray space before <code>#include</code>. Cosmetic, but a normalization pass will remove both.</li>
+</ul>
+
+<h2 id="s3">3. Architecture decision: one firmware, two roles</h2>
+
+<h3>3.1 The truthful version of the AP/STA rule</h3>
+<p>The CYW43439 and the Pico SDK expose two Wi-Fi roles: <strong>AP</strong> (host the network) and <strong>STA</strong> (join it). The SDK has no supported ad-hoc/IBSS path, so <strong>exactly one board must be the AP</strong>. That part of the earlier advice is true.</p>
+<p>What is <em>not</em> true is that this requires two codebases. AP/STA is a radio-link role. TX/RX is what a packet is doing. They are orthogonal. Both boards carry the same BOM and run the same transceiver, so either can type, send, receive, decode, and render. The correct architecture is <strong>one firmware, one flag</strong>:</p>
+
+<div class="seq">            2.4 GHz Wi-Fi (private AP, no router)
+   ┌──────────────────────────┐        ┌──────────────────────────┐
+   │  Barebones  ·  AP role   │        │  Jank Box 5000 · STA role│
+   │  OLED + joystick + buttons│◄──────►│  OLED + joystick + buttons│
+   │  UDP :4444               │        │  UDP :4444               │
+   │  HELLO_ACK, LINK_PING    │        │  HELLO, LINK_PONG        │
+   └──────────────────────────┘        └──────────────────────────┘
+        same main.c, IS_AP=1                 same main.c, IS_AP=0</div>
+
+<p>For the PoC, the user confirmed <strong>Barebones = AP (host)</strong> and <strong>Jank Box 5000 = STA (client)</strong>. The earlier audit recommendation (Jank Box = AP) is superseded. Both units now carry the identical BOM: SH1106 OLED, PSP joystick on ADC0/ADC1, and SELECT/DELETE/BACK on GP14/GP15/GP12. <code>IS_AP</code> selects only the Wi-Fi role; the OLED, ADC, button, codec, parser, and screen paths are unconditional, so both boards type, send, receive, decode, and render. Wi-Fi bring-up is non-blocking, so the UI and controls run while the STA joins. The code does not care which physical board plays which role; only the UF2 differs.</p>
+
+<h3>3.2 One source, two build targets</h3>
+<p>Move the RX <code>main.c</code> to the canonical firmware project, replace the hard <code>#define IS_AP</code> with a default, and let CMake define it per target:</p>
+
+<pre><code>// main.c
+#ifndef IS_AP
+#define IS_AP 1          // safe default; CMake overrides per target
+#endif</code></pre>
+
+<pre><code># CMakeLists.txt
+add_executable(phantom_link_ap  main.c)
+target_compile_definitions(phantom_link_ap  PRIVATE IS_AP=1)
+
+add_executable(phantom_link_sta main.c)
+target_compile_definitions(phantom_link_sta PRIVATE IS_AP=0)
+
+foreach(tgt phantom_link_ap phantom_link_sta)
+  target_link_libraries(${tgt} pico_stdlib pico_cyw43_arch_lwip_poll
+                              hardware_spi hardware_adc)
+  target_include_directories(${tgt} PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+  pico_enable_stdio_usb(${tgt} 1)
+  pico_enable_stdio_uart(${tgt} 0)
+  pico_add_extra_outputs(${tgt})
+endforeach()</code></pre>
+
+<p>This produces <code>phantom_link_ap.uf2</code> and <code>phantom_link_sta.uf2</code> from one source. Both builds run the same UI, input, codec, and parser; only the Wi-Fi bring-up differs. “Identical firmware” here means identical source and behavior, not byte-identical UF2s: the role constant is compiled in. The implementation stores it in a <code>static const bool is_ap</code> and keeps the OLED, ADC, button, codec, and parser paths outside every role conditional. A future single-binary option is to read SELECT at boot (held = AP, released = STA) and set the same runtime variable; for the PoC, two deterministic targets are easier to debug.</p>
+<p>The SDK 2.3.1 cyw43 build is compiled with <code>CYW43_NETUTILS=0</code>, so the AP has no DHCP server. The STA therefore stops DHCP and uses the fixed address <code>192.168.4.2/24</code>, gateway <code>192.168.4.1</code>. This is a PoC transport decision; a product build should add a DHCP server or make the address configurable.</p>
+
+<h3>3.3 Why the split happened, and why it must be closed now</h3>
+<p>The TX folder was built at 16:16 on 11/15; the RX folder was last edited at 17:21. All Base-6 work landed in RX after the TX snapshot. Every hour spent maintaining two trees from here will recreate the same drift. The repository must have one firmware source before the handshake work starts, or the next feature will land on one board only again.</p>
+
+<h2 id="s4">4. Defect register (52 items)</h2>
+
+<p class="small">Severity: <span class="badge b0">P0</span> blocks the proof of concept or makes a claim false; <span class="badge b1">P1</span> breaks correctness, reliability, or the UI; <span class="badge b2">P2</span> is reproducibility, hygiene, security, or documentation debt. Line numbers refer to the current files at <code>a5ee129</code>. “Verified” means read directly from the code; “reported” means from the user’s hardware notes or screenshot.</p>
+
+<h3>4.1 P0 — blockers</h3>
+<table>
+  <thead><tr><th style="width:68px">ID</th><th style="width:150px">Location</th><th>Verified defect</th><th style="width:36%">Exact fix</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="badge b0">P0-01</span></td>
+      <td><code>Phantom_Link_tx/main.c</code> vs <code>Phantom_Link_rx/main.c</code></td>
+      <td>TX is a pre-Base-6 fork: one packet per character, no STA branch, no ADC/button init, no <code>handle_select_button()</code> call. Diff is +34/−124; all headers/assets identical. The two boards speak different protocols.</td>
+      <td>One canonical <code>main.c</code>; <code>IS_AP</code> build flag; <code>phantom_link_ap</code> + <code>phantom_link_sta</code> targets. Archive the TX tree only after parity. See §5.1 and Phase 2.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b0">P0-02</span></td>
+      <td>TX <code>main()</code> 215–262</td>
+      <td>No <code>adc_init()</code>, no <code>adc_gpio_init(26/27)</code>, no <code>gpio_init/pull_up(14/15)</code>, no joystick or button polling. The menu is deaf; SEND is unreachable.</td>
+      <td>Port RX lines 298–346 into the shared main. Both roles must run the same input loop and debounce. See §3.2.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b0">P0-03</span></td>
+      <td>Both <code>main.c</code>; no handshake block</td>
+      <td>No <code>HELLO</code>, no <code>HELLO_ACK</code>, no <code>peer_ip</code>, no <code>link_state</code>, no heartbeat, no timeout. Sends are blind; a printed packet name is not delivery confirmation.</td>
+      <td>Implement the handshake/heartbeat state machine in §5.3; gate SEND on <code>link_up</code>. Phase 3.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b0">P0-04</span></td>
+      <td>RX 159-188; TX 159-173</td>
+      <td><code>char_index = current_message[i] - 'A'</code> with a 0–25 clamp. Space, digits, and punctuation all transmit as <code>'A'</code>; <code>"SOS SOS"</code> becomes <code>"SOSASOS"</code>. The UI's target character set is 49 characters (48 glyphs + space); the transport carries 26.</td>
+      <td>Three-digit Base-6 codec over the 49-code table (48 glyphs + space) in §5.2. Two digits cannot cover the UI; three can cover full printable ASCII.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b0">P0-05</span></td>
+      <td>RX 50-55, 194-195, 208</td>
+      <td><code>numeric_boxes</code> is vertically misaligned with the baked art: <code>SOS</code> is at <code>[2][1]</code> and <code>SPACE</code> at <code>[3][1]</code>, but the array leaves both empty and treats the blank <code>[1][1]</code> as <code>SOS</code>; <code>[3][2]</code> is the <code>LINK</code> indicator, not punctuation. <code>IN RANGE?</code> jumps back to Alpha and <code>SOS</code> inserts a space. Group 13 maps to empty <code>[1][2]</code>. The alpha <code>WXYZ</code> group omits <code>V</code>. Net result: <code>V</code>, <code>-</code>, <code>(</code>, <code>)</code>, <code>[</code>, <code>]</code>, numeric <code>SOS</code>, and numeric <code>SPACE</code> are unreachable.</td>
+      <td>Use the art-correct array and actions in §5.4: SOS <code>[2][1]</code>, SPACE <code>[3][1]</code>, LINK <code>[3][2]</code> indicator, no numeric punctuation key; add <code>V</code> as the fifth <code>WXYZ</code> tap. Remove the old numeric special cases and group 13.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b0">P0-06</span></td>
+      <td>RX 159-188</td>
+      <td>Sending blocks with <code>sleep_ms(100)</code> per packet inside the button handler and never calls <code>cyw43_arch_poll()</code>. A 20-character message freezes Wi-Fi for roughly four seconds; inbound packets drop and the UI stalls.</td>
+      <td>Non-blocking TX state machine in §5.7: one symbol per 80-100 ms from the main loop, poll every iteration. Phase 4.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b0">P0-07</span></td>
+      <td>TX 76–86; <code>lwipopts.h</code> 1–41</td>
+      <td>Broadcast to <code>192.168.4.255</code> without <code>SOF_BROADCAST</code>; <code>udp_sendto()</code>’s <code>err_t</code> is ignored; <code>pbuf_alloc</code> failure is silent. The serial monitor prints <code>TX High: PONG</code> even if lwIP rejected the send.</td>
+      <td><code>ip_set_option(upcb, SOF_BROADCAST)</code> or unicast after handshake; check and log every <code>err_t</code>. Phase 3/4.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b0">P0-08</span></td>
+      <td>RX 81 (and TX 82)</td>
+      <td>The RX reply is hardcoded to <code>192.168.4.1</code>; the <code>addr</code> and <code>port</code> arguments handed to the callback are ignored. If DHCP assigns a different address or the roles swap, the reply goes nowhere.</td>
+      <td>On every valid packet, store <code>peer_ip = *addr; peer_port = port;</code> and reply to that peer. See §5.3.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b0">P0-09</span></td>
+      <td>RX 98–111</td>
+      <td><code>static int high_val</code> pairs digits with no message ID, no sequence number, no inter-symbol timeout, and no duplicate detection. One lost or duplicated packet shifts every following character until END.</td>
+      <td>Add a 500 ms inter-symbol timeout that resets the accumulator, and resend/drop on a gap. A full <code>msg_id</code>/<code>seq</code> header belongs in the encryption phase (Phase 8); see §5.2 and §5.3.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b0">P0-10</span></td>
+      <td>RX 112–119</td>
+      <td>The END handler prints <code>!!! SOS SIGNAL RECEIVED !!!</code> for every message; the <code>strcmp(..., "SOS")</code> check that still exists in the TX file was lost in RX. Any message triggers SOS.</td>
+      <td>Decode, compare to <code>"SOS"</code>, print <code>Secret Msg: %s</code> otherwise, and display the actual decoded message. Phase 4.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b0">P0-11</span></td>
+      <td>Both 24–36; README 1–17, 57</td>
+      <td><code>PhantomPacket</code> and <code>calculate_crc()</code> are defined and never called; the struct lacks <code>__attribute__((packed))</code>; there is no XOR, Speck, sync-word check, length check, or CRC. README and roadmap claim “encrypted” and “XOR cipher.”</td>
+      <td>For the handshake-first PoC, correct the README to “plaintext PoC, encryption planned.” Implement framing/CRC/Speck only in Phase 8. Never claim encrypted until it is.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>4.2 P1 — correctness, reliability, UI</h3>
+<table>
+  <thead><tr><th style="width:68px">ID</th><th style="width:150px">Location</th><th>Verified defect</th><th style="width:36%">Exact fix</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge b1">P1-01</span></td><td>RX 93</td><td><code>strncmp(payload, token, p-&gt;len)</code> matches prefixes: <code>"PIN"</code> matches <code>"PING"</code>; a zero-length UDP packet matches <code>PING</code>.</td><td>Exact length + <code>memcmp</code> helper; reject zero-length. See §5.3.</td></tr>
+    <tr><td><span class="badge b1">P1-02</span></td><td>RX 142–152</td><td><code>move_cursor</code> checks only one step and does not skip empty boxes; on the numeric page, any left move jumps to Alpha, even from column 1 or 2.</td><td>Loop until a valid box or full wrap; return to Alpha only when <code>current_page==1 &amp;&amp; d_col==-1 &amp;&amp; cursor_col==0</code>.</td></tr>
+    <tr><td><span class="badge b1">P1-03</span></td><td>RX 136–138; <code>oled.h</code> 95–137</td><td>Message is drawn at <code>(0,30)</code>. The renderer uses <code>y/8</code>, so it actually lands at row 24 and overwrites the top box outlines. No wrapping, no dedicated text area.</td><td>Fix the renderer y-offset (§5.6); reserve and clear a text region; wrap at the screen edge.</td></tr>
+    <tr><td><span class="badge b1">P1-04</span></td><td><code>oled.h</code> 95–137</td><td><code>int start_page = y / 8;</code> ignores <code>y % 8</code>. Glyph columns are assigned with <code>=</code>, not OR-ed, so text erases whatever is underneath.</td><td>Use page + shift, OR into both pages; add <code>oled_fill_rect()</code>. See §5.6.</td></tr>
+    <tr><td><span class="badge b1">P1-05</span></td><td>RX 186–187</td><td>After SEND, the sender clears <code>current_message</code>. The user cannot see what was sent, retry, or compare against the RX display.</td><td>Keep the message; clear on DELETE or after an application-level ACK. Phase 4.</td></tr>
+    <tr><td><span class="badge b1">P1-06</span></td><td>RX 268–286</td><td>STA association timeout is 30 × 100 ms = 3 s; prints a hardcoded <code>IP: 192.168.4.2</code> without reading the actual DHCP address; no retry.</td><td>15–20 s timeout with retry; log the real IP from the netif; treat failure as LINK_DOWN, not “offline mode.”</td></tr>
+    <tr><td><span class="badge b1">P1-07</span></td><td>RX 232-239; <code>boot_ui.h</code></td><td><code>boot_image</code> is unused. Boot is a 2 s blank wait, then <code>oled_clear()</code> and a 500 ms blank hold instead of the 2.5 s splash in the README.</td><td>Include <code>boot_ui.h</code>; copy <code>boot_image</code> to the buffer; show 2.5 s; then draw the main UI. Phase 5.</td></tr>
+    <tr><td><span class="badge b1">P1-08</span></td><td>RX 60, 129</td><td><code>ui_active</code> is initialized true and read once; it is never toggled. The selection box stays visible while transmitting.</td><td>Set false during TX and while LINK_DOWN; restore after. Phase 5.</td></tr>
+    <tr><td><span class="badge b1">P1-09</span></td><td>RX 154–225</td><td>There is no TX queue or cancel path; the button handler is the send engine. No way to abort, pause, or retry a message.</td><td>State machine with <code>tx_active</code>, <code>tx_pos</code>, <code>tx_digit</code>, <code>tx_next_ms</code>; DELETE cancels. See §5.7.</td></tr>
+    <tr><td><span class="badge b1">P1-10</span></td><td><code>oled.h</code> 30–35, 59–68</td><td><code>oled_write</code> toggles CS for every byte; <code>oled_show</code> performs 1024 single-byte SPI writes plus command bytes per frame. Functional but wasteful and a source of timing jitter.</td><td>Hold CS low per page, write 128 data bytes in one <code>spi_write_blocking</code> call; optionally track dirty pages.</td></tr>
+    <tr><td><span class="badge b1">P1-11</span></td><td>Both <code>main()</code></td><td>No watchdog. A Wi-Fi stall or a blocking send leaves the device unresponsive until power cycle.</td><td><code>watchdog_enable(..., false)</code>; feed only after a healthy poll + UI update; log reset reason.</td></tr>
+    <tr><td><span class="badge b1">P1-12</span></td><td>RX 260, 268, 292-294</td><td>Return values of <code>cyw43_arch_enable_ap_mode</code>, <code>udp_new</code>, <code>udp_bind</code>, and <code>cyw43_arch_wifi_connect_async</code> are ignored. A failed bind or absent AP is invisible.</td><td>Check every return; log an explicit error state; retry or halt with a visible OLED message.</td></tr>
+    <tr><td><span class="badge b1">P1-13</span></td><td>RX 76–80</td><td><code>pbuf_alloc</code> failure returns silently; <code>memcpy</code> into a null payload is avoided, but the message vanishes.</td><td>Return <code>err_t</code> from <code>udp_send_packet</code>; log allocation failures; queue or drop with a counter.</td></tr>
+    <tr><td><span class="badge b1">P1-14</span></td><td>RX 114, 137</td><td>Incoming END writes <code>current_message</code> while the user may be typing. An RX message can overwrite the TX draft.</td><td>Separate <code>tx_message</code> and <code>rx_message</code>; merge only when idle or after an explicit user action.</td></tr>
+    <tr><td><span class="badge b1">P1-15</span></td><td>RX 112–119</td><td>No expected-length/terminator validation. An END with no data clears the buffer; an empty message sends only END; a truncated message is accepted as complete.</td><td>Include <code>len</code> in the message header or END payload; reject empty/truncated; increment an error counter.</td></tr>
+    <tr><td><span class="badge b1">P1-16</span></td><td>RX 100–111</td><td>No duplicate detection. A broadcast or retransmitted symbol is decoded twice and corrupts the Base-6 grouping.</td><td>Add <code>msg_id</code> + <code>seq</code>; drop duplicates; reset the accumulator on a gap. See §5.2.</td></tr>
+    <tr><td><span class="badge b1">P1-17</span></td><td>RX 143</td><td><code>if (current_page == 1 &amp;&amp; d_col == -1)</code> returns to Alpha from any numeric column, so left from <code>IN RANGE?</code> or <code>SOS</code> jumps to Alpha instead of moving to column 0.</td><td>Only transition when <code>cursor_col == 0</code>; otherwise use the normal cursor step. See §5.4.</td></tr>
+    <tr><td><span class="badge b1">P1-18</span></td><td>RX 329-346</td><td>Every joystick move and button press executes <code>sleep_ms(200)</code>; <code>handle_select_button()</code> and <code>handle_delete_button()</code> are called repeatedly while the button is held, with no edge detection. Holding SELECT cycles the multi-tap character; holding DELETE deletes repeatedly; <code>cyw43_arch_poll()</code> is skipped during the sleeps.</td><td>Edge-detect both buttons with <code>last_select</code>/<code>last_delete</code>; call handlers only on the falling edge. Replace blocking sleeps with <code>now_ms</code> timers; poll Wi-Fi every iteration. Phase 4/5.</td></tr>
+    <tr><td><span class="badge b1">P1-19</span></td><td><code>oled.h</code> 18–26, 81–93, 139–143</td><td>Legacy 5×7 font engine is A–Z only; <code>oled_draw_string</code> and <code>oled_draw_bitmap</code> are unused. Dead code increases flash and confusion.</td><td>Delete the dead path or document it as a fallback. Use only the variable-width custom font for UI text.</td></tr>
+    <tr><td><span class="badge b1">P1-20</span></td><td><code>font_ui.h</code> 53–55; <code>png2c.py</code></td><td>49 glyphs generated, but the renderer maps 48. The double-quote is split into two 1-px glyphs by the column scanner; only the first half is drawn, and index 48 is orphaned.</td><td>Fix the scanner to preserve internal blank columns / use a glyph manifest; merge the quote as a 3-column glyph; add a compile-time assert <code>font_char_count == 48</code>. See §5.5.</td></tr>
+  </tbody>
+</table>
+
+<h3>4.3 P2 — reproducibility, hygiene, security, docs</h3>
+<table>
+  <thead><tr><th style="width:68px">ID</th><th style="width:150px">Location</th><th>Verified defect</th><th style="width:36%">Exact fix</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge b2">P2-01</span></td><td>README 4, 6, 10, 12, 16, 17, 57</td><td>False or ahead-of-code claims: “encrypted,” “XOR cipher,” “packed struct,” “sync word/CRC,” “forced static IP,” “Receiver is AP,” “raw 2.4 GHz RF,” “bypassing standard Wi-Fi stacks.”</td><td>Rewrite the status/architecture with an “Implemented vs. Planned” table; see §9 for exact replacement text.</td></tr>
+    <tr><td><span class="badge b2">P2-02</span></td><td>Project Bible (Desktop, outside repo)</td><td>Immediate-next-step list is two milestones stale (font, multi-tap, radio link are done). <code>png2c.py</code> usage is wrong (it is font-only); “rename my_image to alpha_image” no longer applies (it outputs <code>font_image</code>). No Base-6/handshake entry.</td><td>Regenerate from §9; keep it outside the public repo because it contains personal/job-search data.</td></tr>
+    <tr><td><span class="badge b2">P2-03</span></td><td><code>png2c.py</code></td><td>Generates only <code>font_image</code> + widths/offsets; it cannot regenerate <code>alpha_ui.h</code>, <code>numeric_ui.h</code>, or <code>boot_ui.h</code>. Assumes height 8, silently truncates taller input, hardcodes the array name, and has no glyph-count/order assertion.</td><td>Add <code>img2c.py</code> for 128×64 UI images; parameterize the array name; validate height and glyph count/order; add a manifest. See §5.5.</td></tr>
+    <tr><td><span class="badge b2">P2-04</span></td><td>Repository layout</td><td>Two full firmware trees duplicate every header and asset (35 tracked files). No shared source. Every future fix must be applied twice or drift again.</td><td>One firmware tree + one assets tree; delete/archive the duplicate after the AP/STA targets build. Phase 2.</td></tr>
+    <tr><td><span class="badge b2">P2-05</span></td><td>Repo docs</td><td>No wiring diagram, pin table, BOM, or assembly notes. Pins exist only in <code>oled.h</code> and <code>main.c</code>; a new builder cannot reproduce the hardware.</td><td>Add <code>docs/WIRING.md</code> with the pin map in Appendix B, a BOM, and photos; link it from README.</td></tr>
+    <tr><td><span class="badge b2">P2-06</span></td><td>Repo root</td><td>No <code>LICENSE</code>, no CI, no tests, no <code>CONTRIBUTING</code>. A public portfolio repo without a license is legally “all rights reserved” by default.</td><td>Add MIT or Apache-2.0; add host-side unit tests for codec/parser; add a GitHub Actions build job.</td></tr>
+    <tr><td><span class="badge b2">P2-07</span></td><td>All sources</td><td>No <code>.gitattributes</code>; CRLF/LF drift is likely between Windows and WSL; both <code>main.c</code> and <code>oled.h</code> lack a final newline; RX <code>main.c</code> line 1 has a leading space.</td><td>Add <code>* text=auto eol=lf</code> for C/headers; normalize; fix whitespace. Phase 1.</td></tr>
+    <tr><td><span class="badge b2">P2-08</span></td><td>RX 260</td><td>AP SSID <code>Phantom_Link</code> and password <code>12345678</code> are hardcoded in a public repo. WPA2 with an 8-character dictionary-grade password is not a security boundary.</td><td>Move credentials to <code>config.h</code> / build definitions; use a long passphrase; document that this is a lab network, not a covert one.</td></tr>
+    <tr><td><span class="badge b2">P2-09</span></td><td>TX 225; both</td><td>TX boot banner prints <code>BOOTING PHANTOM LINK (RX)</code>. No firmware version, build date, role, or commit hash in the binary.</td><td>Add <code>FW_VERSION</code>, role, and commit; print at boot; fix the TX banner during unification.</td></tr>
+    <tr><td><span class="badge b2">P2-10</span></td><td><code>u8g2/</code></td><td>An ignored full clone of u8g2 sits at repo root but is not in the build. It is reference material, not a dependency; it bloats the workspace and confuses newcomers.</td><td>Remove it, or move it under <code>reference/</code> with a README explaining it is not used.</td></tr>
+    <tr><td><span class="badge b2">P2-11</span></td><td><code>Phantom_Link_rx/.gitignore</code></td><td>RX has a local <code>.gitignore</code> containing only <code>build</code> and <code>!.vscode/*</code>; TX has none and relies on the root file. Intermediate patterns (<code>prepared_*.png</code>, <code>*.png.png</code>, <code>my_ui.h</code>) are not ignored anywhere.</td><td>Delete the per-tree ignore; add intermediate patterns to the root; ignore <code>artifacts/</code> and generated headers if appropriate.</td></tr>
+    <tr><td><span class="badge b2">P2-12</span></td><td>Both trees</td><td><code>prepared_font.png</code> and <code>test_font.png</code> are tracked intermediate artifacts. The Bible’s own cleanup command removes them.</td><td><code>git rm --cached</code>; add to <code>.gitignore</code>; keep only <code>font_sheet.png</code> and the generated header.</td></tr>
+    <tr><td><span class="badge b2">P2-13</span></td><td>CMake</td><td>No <code>-Wall -Wextra</code>, no <code>-Werror</code> for local builds, no static analysis. The leading-space and unused-function warnings are invisible.</td><td>Add warning flags; fix warnings; optionally add clang-tidy/cppcheck in CI.</td></tr>
+    <tr><td><span class="badge b2">P2-14</span></td><td>Numeric UI</td><td><code>BAT:</code> is baked art with no battery divider, ADC channel, or measurement. It is decorative and misleading.</td><td>Add a divider on a free ADC (GP28/GP29) and a real percentage, or remove the label until it is real.</td></tr>
+    <tr><td><span class="badge b2">P2-15</span></td><td>Both UI pages</td><td><code>PREV:</code> and <code>CURR:</code> are baked into the art, but there are no <code>prev_char</code>/<code>curr_char</code> variables or draw calls. The multi-tap preview does not exist.</td><td>Implement the preview (clear the header rows, draw values), or remove the labels from the art.</td></tr>
+    <tr><td><span class="badge b2">P2-16</span></td><td>Workspace</td><td>The repo lives under <code>OneDrive\Documents\Desktop\Phantom_Link</code> and builds in WSL. OneDrive sync can lock or churn <code>build/</code>, and WSL access to <code>/mnt/c</code> is slower and case-insensitive.</td><td>Move the working clone to <code>~/projects/Phantom-Link</code> (ext4), or exclude <code>build/</code> and <code>.git/</code> from OneDrive.</td></tr>
+    <tr><td><span class="badge b2">P2-17</span></td><td>Threat model</td><td>No authentication, no encryption, no replay protection, visible SSID, plaintext serial logs. The device is neither encrypted nor covert today.</td><td>Write a one-page threat model; state the lab assumptions; add auth/encryption in Phase 8; do not publish “covert” claims.</td></tr>
+    <tr><td><span class="badge b2">P2-18</span></td><td>Evidence</td><td>No committed test log, range test, latency/throughput measurement, current draw, or battery runtime. The “middle of the desert” claim is unverified.</td><td>Add <code>docs/TEST_LOG.md</code> with date, firmware hash, test, result, photo; measure range and current.</td></tr>
+    <tr><td><span class="badge b2">P2-19</span></td><td>Hardware roadmap</td><td>“Dig up antenna trace” would modify a certified module and likely void FCC/ISED certification; it can also damage the board. No range baseline exists.</td><td>Document the risk; keep the certified module intact for the portfolio; if you experiment, use a spare board and label it.</td></tr>
+    <tr><td><span class="badge b2">P2-20</span></td><td>Process</td><td>No tags, no backup of the working UF2s, no branch per phase. A bad clean build can erase the only working Jank Box image.</td><td>Tag <code>pre-audit</code>, archive both UF2s outside git, branch <code>poc/handshake</code>, tag <code>poc-handshake</code> when green. Phase 0/7.</td></tr>
+    <tr><td><span class="badge b2">P2-21</span></td><td>RX 132; <code>oled.h</code> 145-154</td><td>The selection outline is drawn from <code>(x1-1, y1-1)</code> to <code>(x2-1, y2-1)</code>, not around the hit box. <code>draw_box(x, y, w, h)</code> treats <code>w</code>/<code>h</code> as extents, so the call with <code>w = x2-x1</code> shifts the right and bottom edges one pixel up/left and overlaps the content edge.</td><td>Call <code>oled_draw_box(b.x1-1, b.y1-1, b.x2-b.x1+2, b.y2-b.y1+2)</code>, or change <code>draw_box</code> to take inclusive <code>x2</code>/<code>y2</code> and document the contract.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s5">5. Deep dives and reference designs</h2>
+
+<h3 id="d1">5.1 The two-firmware fork, and the one-source migration</h3>
+
+<p>The diff is not cosmetic. It is a protocol fork:</p>
+
+<table>
+  <thead><tr><th>Behavior</th><th>RX tree (live)</th><th>TX tree (stale)</th></tr></thead>
+  <tbody>
+    <tr><td>Wi-Fi role</td><td><code>IS_AP 0</code> → STA</td><td><code>IS_AP 1</code> → AP</td></tr>
+    <tr><td>Encoder</td><td>Base-6 high/low, two frames per character</td><td>One frame per character, <code>idx % 6</code></td></tr>
+    <tr><td>Decoder</td><td>High/low accumulator, <code>'A' + high*6 + low</code></td><td><code>'A' + packet_id</code>, one frame per character</td></tr>
+    <tr><td>STA bring-up</td><td>Full <code>#else</code> branch, async connect, 3 s timeout</td><td>Deleted; AP only</td></tr>
+    <tr><td>Input loop</td><td>ADC init, joystick, both buttons, debounce</td><td>Absent; handlers defined but never called</td></tr>
+    <tr><td>Boot banner</td><td><code>BOOTING PHANTOM LINK</code></td><td><code>BOOTING PHANTOM LINK (RX)</code></td></tr>
+    <tr><td>END handling</td><td>Always prints SOS</td><td>Correct <code>strcmp</code> check</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <strong>Do not patch the TX tree in place.</strong> Every fix you make there would need to be made again in RX, and the two would drift a third time. The migration is: promote RX <code>main.c</code> to the canonical firmware, parameterize the role, build two targets, verify both boards, then archive the TX tree. The old TX <code>.uf2</code> should be copied somewhere outside the repo before any clean build.
+</div>
+
+<h4>Migration steps</h4>
+<ol>
+  <li>Create <code>firmware/</code> at the repo root (or rename <code>Phantom_Link_rx</code> to <code>firmware</code>). Move <code>main.c</code>, <code>oled.h</code>, <code>font_ui.h</code>, <code>alpha_ui.h</code>, <code>numeric_ui.h</code>, <code>boot_ui.h</code>, <code>lwipopts.h</code>, and <code>CMakeLists.txt</code> into it. Keep the PNG sources in <code>assets/</code>.</li>
+  <li>Replace the hard <code>#define IS_AP 0</code> with the <code>#ifndef</code> default from §3.2.</li>
+  <li>Change the CMake target list to the two-target <code>foreach</code> from §3.2.</li>
+  <li>Build both; flash AP to the Barebones and STA to the Jank Box 5000; verify the UI and input on both boards.</li>
+  <li>Only then delete <code>Phantom_Link_tx</code> from the working tree. Keep its last <code>.uf2</code> in <code>artifacts/uf2/</code> (gitignored) as a rollback.</li>
+</ol>
+
+<h3 id="d2">5.2 Base-6 capacity, the 49-code alphabet, and the codec</h3>
+
+<p>Base-6 means six possible symbols per frame. Each frame carries <strong>log₂(6) ≈ 2.585 bits</strong>. The number of frames per character determines the alphabet size:</p>
+
+<table>
+  <thead><tr><th>Digits</th><th>Codes</th><th>Bits per character</th><th>Frames per character</th><th>Coverage</th><th>Verdict</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>6</td><td>2.58</td><td>1</td><td>Six symbols</td><td>Not enough</td></tr>
+    <tr><td>2</td><td>36</td><td>5.17</td><td>2</td><td>A–Z + 0–9 exactly</td><td>Current PoC; cannot represent space or punctuation</td></tr>
+    <tr><td>3</td><td>216</td><td>7.75</td><td>3</td><td>48 drawable glyphs + space (49); full printable ASCII if desired</td><td><span class="badge bok">RECOMMENDED</span></td></tr>
+  </tbody>
+</table>
+
+<p>Two digits are mathematically elegant — 36 codes exactly covers A–Z and 0–9 — but the UI's target character set is 48 drawable glyphs plus space: 49 characters. Space, <code>=</code>, <code>+</code>, <code>-</code>, <code>.</code>, <code>,</code>, <code>?</code>, <code>!</code>, <code>(</code>, <code>)</code>, <code>[</code>, <code>]</code>, and <code>&quot;</code> cannot be represented. The current clamp turns all of them into <code>'A'</code>. Three digits solve it and still fit the SFO concept: the receiver just accumulates three symbols instead of two. <code>SOS</code> becomes nine frames instead of six; at 80 ms per frame that is 720 ms, which is fine for a PoC.</p>
+
+<h4>Canonical glyph table</h4>
+<pre><code>// 49 transport codes: the 48 drawable glyphs plus space.
+// The leading space is code 0; A is 1. The renderer keeps its own
+// character-to-font-index map, so this order need not match it.
+static const char GLYPHS[] =
+    " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789=+-.,?!()[]\"";
+
+static int code_from_glyph(char c) {
+    if (c == '\0') return -1;
+    const char *p = strchr(GLYPHS, c);
+    return p ? (int)(p - GLYPHS) : -1;
+}
+
+static char glyph_from_code(int code) {
+    if (code &lt; 0 || code &gt;= (int)sizeof(GLYPHS) - 1) return '?';
+    return GLYPHS[code];
+}</code></pre>
+
+<p class="small">The font table has 48 drawable glyphs; space is a transport-only code. <code>oled_draw_custom_string()</code> already advances five pixels for an unknown character, so it renders space correctly without a glyph.</p>
+
+<h4>Encode one character into three Base-6 symbols</h4>
+<pre><code>int code = code_from_glyph(c);
+if (code &lt; 0) code = code_from_glyph('?');   // unknown glyph fallback
+
+int d0 = code / 36;          // 0..1
+int d1 = (code / 6) % 6;     // 0..5
+int d2 = code % 6;           // 0..5
+
+send_symbol(d0);
+send_symbol(d1);
+send_symbol(d2);</code></pre>
+
+<h4>Decode three symbols into one character</h4>
+<pre><code>static int sym_acc = 0;
+static int sym_count = 0;
+
+// packet_id is 0..5, resolved from the six packet names.
+sym_acc = sym_acc * 6 + packet_id;
+if (++sym_count == 3) {
+    char c = glyph_from_code(sym_acc);
+    if (rx_index &lt; 63) {
+        rx_buffer[rx_index++] = c;
+        rx_buffer[rx_index] = '\0';
+    }
+    sym_acc = 0;
+    sym_count = 0;
+}</code></pre>
+
+<div class="callout warn">
+  <strong>Token collision.</strong> The six symbols are <code>PING</code>, <code>ACK</code>, <code>SYNC</code>, <code>PONG</code>, <code>DATA</code>, <code>READY</code>. Do <em>not</em> use <code>ACK</code> as a handshake reply: it is symbol index 1. Use <code>HELLO_ACK</code>, <code>LINK_PING</code>, <code>LINK_PONG</code>, which start with letters outside the alphabet and are checked before symbol decoding.
+</div>
+
+<p><strong>Reliability note.</strong> Three-symbol grouping still desynchronizes if a frame is lost. For the PoC, add a 500 ms inter-symbol timeout that resets <code>sym_acc</code>/<code>sym_count</code>, and send <code>END</code> with the expected character count. A full <code>msg_id</code>/<code>seq</code> header belongs in the encryption phase, not before the handshake works.</p>
+
+<h3 id="d3">5.3 Handshake, peer learning, heartbeat, and link state</h3>
+
+<p>The handshake is four control tokens outside the Base-6 alphabet. The STA initiates; the AP replies and learns the peer address from the packet. After that, both sides heartbeat and both can send data.</p>
+
+<div class="seq">   STA (Jank Box 5000)                               AP (Barebones)
+        |                                                 |
+        |------ HELLO -----------------------------------&gt;|
+        |&lt;----- HELLO_ACK --------------------------------|
+        |         link_state = LINK_UP on both sides      |
+        |                                                 |
+        |------ LINK_PING -------------------------------&gt;|
+        |&lt;----- LINK_PONG --------------------------------|
+        |&lt;----- LINK_PING --------------------------------|
+        |------ LINK_PONG -------------------------------&gt;|
+        |                                                 |
+        |   every 1 s; any valid packet updates last_heard|
+        |   no packet for 3 s  -&gt;  LINK_DOWN on both      |
+        |                                                 |
+        |------ Base-6 data symbols + END ---------------&gt;|
+        |&lt;----- Base-6 data symbols + END ----------------|</div>
+
+<h4>Tokens and state</h4>
+<pre><code>#define TOK_HELLO "HELLO"
+#define TOK_HACK  "HELLO_ACK"
+#define TOK_PING  "LINK_PING"
+#define TOK_PONG  "LINK_PONG"
+#define TOK_END   "END"
+
+typedef enum { LINK_DOWN = 0, LINK_UP = 1 } link_state_t;
+
+static link_state_t link_state = LINK_DOWN;
+static ip_addr_t peer_ip;
+static u16_t    peer_port = 4444;
+static bool     have_peer = false;
+static uint32_t last_heard_ms = 0;
+static uint32_t last_hello_ms = 0;
+static uint32_t last_ping_ms  = 0;
+
+static uint32_t now_ms(void) {
+    return to_ms_since_boot(get_absolute_time());
+}</code></pre>
+
+<h4>Exact packet parser</h4>
+<pre><code>static bool pkt_eq(const struct pbuf *p, const char *tok) {
+    size_t n = strlen(tok);
+    return p-&gt;tot_len == n &amp;&amp; memcmp(p-&gt;payload, tok, n) == 0;
+}</code></pre>
+
+<p>This replaces <code>strncmp(payload, token, p-&gt;len)</code>. It rejects zero-length packets, prefixes like <code>PIN</code>, and suffix garbage. <code>p-&gt;payload</code> assumes one contiguous pbuf; datagrams this small normally are, but for correctness check <code>p-&gt;next == NULL</code> or copy with <code>pbuf_copy_partial()</code> into a 16-byte buffer before comparing.</p>
+
+<h4>Receive callback</h4>
+<pre><code>static void udp_recv_callback(void *arg, struct udp_pcb *pcb,
+                              struct pbuf *p, const ip_addr_t *addr, u16_t port) {
+    if (!p) return;
+    uint32_t now = now_ms();
+
+    if (pkt_eq(p, TOK_HELLO)) {
+        peer_ip = *addr;
+        peer_port = port;
+        have_peer = true;
+        last_heard_ms = now;
+        link_state = LINK_UP;
+        udp_send_to(TOK_HACK, &peer_ip, peer_port);
+        printf("LINK UP: HELLO from %s:%u\n", ipaddr_ntoa(addr), port);
+    } else if (pkt_eq(p, TOK_HACK)) {
+        peer_ip = *addr;
+        peer_port = port;
+        have_peer = true;
+        last_heard_ms = now;
+        link_state = LINK_UP;
+        printf("LINK UP: HELLO_ACK from %s:%u\n", ipaddr_ntoa(addr), port);
+    } else if (pkt_eq(p, TOK_PING)) {
+        last_heard_ms = now;
+        udp_send_to(TOK_PONG, addr, port);
+    } else if (pkt_eq(p, TOK_PONG)) {
+        last_heard_ms = now;
+        link_state = LINK_UP;
+    } else {
+        decode_symbol(p);   // Base-6 data path, §5.2
+    }
+
+    pbuf_free(p);
+}</code></pre>
+
+<h4>Main-loop handshake and heartbeat</h4>
+<pre><code>uint32_t now = now_ms();
+
+if (!IS_AP &amp;&amp; link_state == LINK_DOWN &amp;&amp; now - last_hello_ms &gt;= 1000) {
+    ip_addr_t ap;
+    IP4_ADDR(&amp;ap, 192, 168, 4, 1);
+    udp_send_to(TOK_HELLO, &amp;ap, 4444);
+    last_hello_ms = now;
+    printf("HELLO -&gt; AP\n");
+}
+
+if (link_state == LINK_UP &amp;&amp; have_peer &amp;&amp; now - last_ping_ms &gt;= 1000) {
+    udp_send_to(TOK_PING, &amp;peer_ip, peer_port);
+    last_ping_ms = now;
+}
+
+if (link_state == LINK_UP &amp;&amp; now - last_heard_ms &gt;= 3000) {
+    link_state = LINK_DOWN;
+    printf("LINK LOST\n");
+}
+
+cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, link_state == LINK_UP);</code></pre>
+
+<div class="callout good">
+  <strong>Why this order matters.</strong> The AP learns the STA’s address from <code>addr</code>, so peer discovery works with either DHCP or the PoC’s static address. The STA learns the AP’s address from the <code>HELLO_ACK</code> source, so a role swap does not require code changes. After the first handshake, data can be unicast instead of broadcast, which removes the <code>SOF_BROADCAST</code> failure mode entirely.
+</div>
+
+<h4>Send gating and status</h4>
+<pre><code>if (link_state != LINK_UP) {
+    printf("NO LINK - message kept\n");
+    return;                 // do not clear current_message
+}
+start_send();               // §5.7</code></pre>
+
+<p>Add a <code>link_up</code> flag to the UI status variables. For the PoC, the CYW43 LED is the simplest link indicator: on when <code>LINK_UP</code>, off when <code>LINK_DOWN</code>. The OLED <code>LINK</code> label can be driven in Phase 5.</p>
+
+<h4>Future nonce hook (do not implement yet)</h4>
+<p>The handshake is the natural place for a nonce that later seeds Speck. Reserve it structurally now: define the control payload as <code>TOKEN [nonce]</code> and parse the first token exactly, then the optional 8 hex characters. Do not add crypto until the plain handshake passes the acceptance tests. This avoids a protocol rewrite in Phase 8.</p>
+
+<h3 id="d4">5.4 Completing the numeric page and the typeable set</h3>
+
+<p>The baked numeric art is the source of truth; the array and action map are not. Pixel-level OCR of <code>numeric_ui.h</code> shows <code>123 / IN RANGE? / [ . ]</code> on row 0, <code>456</code> alone on row 1, <code>789 / SOS / BAT:</code> on row 2, and <code>0=+- / SPACE / LINK</code> on row 3. The original code reuses <code>IN RANGE?</code> as “back” and <code>SOS</code> as “space”; the first audit pass repeated the old row offset for SOS/BAT/LINK. The corrected mapping below follows the art.</p>
+
+<h4>Exact box array</h4>
+<pre><code>BoxRect numeric_boxes[4][3] = {
+    { {7, 20, 40, 30}, {49, 20, 80, 30}, {0, 0, 0, 0} },       // 123   IN RANGE?   [ . ]
+    { {7, 31, 40, 41}, {0, 0, 0, 0},     {0, 0, 0, 0} },       // 456
+    { {7, 42, 40, 52}, {49, 42, 80, 52}, {0, 0, 0, 0} },       // 789   SOS         BAT:
+    { {7, 53, 40, 63}, {52, 55, 70, 64}, {0, 0, 0, 0} }        // 0=+-  SPACE       LINK
+};</code></pre>
+
+<p class="small">Only non-zero rectangles are selectable. <code>[0][2]</code> (<code>[ . ]</code>), <code>[2][2]</code> (<code>BAT:</code>), and <code>[3][2]</code> (<code>LINK</code>) are indicator regions, not buttons; leave their rectangles empty so <code>move_cursor()</code> skips them. There is no numeric punctuation key; alpha <code>[3][2]</code> is the only punctuation key.</p>
+
+<h4>Exact action map</h4>
+<pre><code>if (current_page == 1) {
+    if (cursor_row == 0 &amp;&amp; cursor_col == 1) { link_test();        return; } // IN RANGE?
+    if (cursor_row == 2 &amp;&amp; cursor_col == 1) { load_and_send_sos(); return; } // SOS
+    if (cursor_row == 3 &amp;&amp; cursor_col == 1) { append_char(' ');    return; } // SPACE
+}
+
+// ... alphabet/group handling ...
+if (current_page == 1) {
+    if (cursor_row == 0 &amp;&amp; cursor_col == 0) group_index = 9;   // 123
+    if (cursor_row == 1 &amp;&amp; cursor_col == 0) group_index = 10;  // 456
+    if (cursor_row == 2 &amp;&amp; cursor_col == 0) group_index = 11;  // 789
+    if (cursor_row == 3 &amp;&amp; cursor_col == 0) group_index = 12;  // 0=+-
+} else {
+    if (cursor_row == 3 &amp;&amp; cursor_col == 2) group_index = 8;   // .,()[]?!
+    // ... the rest of the alpha map is unchanged
+}</code></pre>
+
+<p>Delete the old numeric special cases at RX 194-195 and the <code>row1col2 → 13</code> mapping at RX 208. Do not create a box at numeric <code>[1][1]</code> or <code>[1][2]</code>; both are blank in the art. Return to Alpha only when moving left from column 0; the joystick already provides that path, so <code>IN RANGE?</code> is free to be the link test.</p>
+
+<h4>Fix the missing characters</h4>
+<ul>
+  <li><code>tap_groups[12]</code> is <code>"0=+\""</code>; the numeric art says <code>0=+-</code>. The minus sign is in the font (index 38) but has no input path. Change group 12 to <code>"0=+-\""</code> (five taps) or add a dedicated minus key. Document which tap produces which.</li>
+  <li>The alpha <code>WXYZ</code> group omits <code>V</code>. The font has <code>V</code> (index 21), but no key produces it. Change group 7 to <code>"WXYZV"</code> so <code>V</code> is the fifth tap; the baked alpha label stays <code>WXYZ</code>, so document the extra tap rather than regenerating the art.</li>
+  <li>The numeric bottom-right <code>[3][2]</code> is the baked <code>LINK</code> indicator, not punctuation. Do not map a punctuation group there; remove group 13. The alpha <code>[3][2]</code> is the only punctuation key.</li>
+  <li>Numeric <code>SOS</code> is <code>[2][1]</code> and numeric <code>SPACE</code> is <code>[3][1]</code>. Create both boxes; do not reuse the blank <code>[1][1]</code>.</li>
+  <li>Set group 8 to <code>".,()[]?!"</code> to match the alpha bottom-right label, so the brackets are reachable.</li>
+</ul>
+
+<h4>Exact tap-group table</h4>
+<pre><code>const char* tap_groups[] = {
+    "ABC", "DEF", "GHI", "JKL", "MNO", "PQR", "STU", "WXYZV",
+    ".,()[]?!", "123", "456", "789", "0=+-\""
+};</code></pre>
+
+<p>Group 8 is the only punctuation key. Group 12 gains the minus sign. Group 7 gains <code>V</code> as a fifth tap; the first four taps still spell <code>WXYZ</code> as the art promises. The numeric <code>LINK</code> cell is an indicator, so there is no group 13. If you prefer a shorter tap cycle, change the art labels instead; do not leave a label that promises characters it cannot type.</p>
+
+<h4>Fix cursor navigation</h4>
+<pre><code>void move_cursor(int d_row, int d_col) {
+    if (current_page == 1 &amp;&amp; d_col == -1 &amp;&amp; cursor_col == 0) {
+        current_page = 0; cursor_row = 0; cursor_col = 0; return;
+    }
+    for (int step = 0; step &lt; 12; step++) {
+        int r = (cursor_row + d_row + 4) % 4;
+        int c = (cursor_col + d_col + 3) % 3;
+        BoxRect b = (current_page == 0) ? alpha_boxes[r][c] : numeric_boxes[r][c];
+        if (b.x2 &gt; b.x1 &amp;&amp; b.y2 &gt; b.y1) {
+            cursor_row = r; cursor_col = c; return;
+        }
+        // advance one more step in the same direction to skip empty slots
+        cursor_row = r; cursor_col = c;
+    }
+}</code></pre>
+
+<h4>Variables the UI already implies</h4>
+<table>
+  <thead><tr><th>Art label</th><th>Variable</th><th>Behavior</th></tr></thead>
+  <tbody>
+    <tr><td><code>PREV:</code> / <code>CURR:</code></td><td><code>prev_char</code>, <code>curr_char</code></td><td>During multi-tap, show the previous committed character and the character currently under the tap. Clear the top 16 px and redraw each frame.</td></tr>
+    <tr><td><code>LINK</code></td><td><code>link_state</code></td><td><code>LINK</code> when up, <code>----</code> or <code>NO LINK</code> when down. Clear/redraw the bottom-right region; do not draw over the punctuation box.</td></tr>
+    <tr><td><code>BAT:</code></td><td><code>battery_pct</code></td><td>Add a divider on GP28/ADC2 (or remove the label). Do not display a fake value.</td></tr>
+    <tr><td><code>IN RANGE?</code></td><td><code>ping_sent_ms</code>, <code>last_rtt_ms</code></td><td>Send <code>LINK_PING</code>; on <code>LINK_PONG</code>, print/display the RTT. For the PoC, serial plus LED is enough.</td></tr>
+  </tbody>
+</table>
+
+<h3 id="d5">5.5 The font pipeline bug and the missing UI converter</h3>
+
+<p>This is the subtle one. <code>png2c.py</code> finds glyphs by scanning for all-black columns. That works for most letters, but the double-quote is two vertical marks separated by a black column. The scanner treats the gap as a glyph boundary and emits <strong>two one-pixel glyphs</strong>. Evidence:</p>
+
+<ul>
+  <li><code>font_char_count = 49</code>, but <code>oled_draw_custom_string()</code> maps only indices 0–47.</li>
+  <li><code>font_widths[47] = 1</code>, <code>font_widths[48] = 1</code>; <code>font_offsets[47] = 177</code>, <code>[48] = 178</code>.</li>
+  <li>The last two image bytes are <code>0x0C, 0x0C</code> — the two halves of the quote.</li>
+  <li>The renderer maps <code>&quot;</code> to index 47, so it draws only the first half. Index 48 is orphaned.</li>
+</ul>
+
+<h4>Fix the quote and the count</h4>
+<pre><code>// Desired: one 3-column glyph (mark, gap, mark) at index 47.
+// font_image: ... 0x0C, 0x00, 0x0C
+// font_widths[47] = 3
+// Remove index 48. font_char_count = 48.
+// font_image length becomes 180; offsets 0..47 stay unchanged (last offset 177).</code></pre>
+
+<p>Better: make the scanner manifest-driven. Add a sidecar file or a header row that declares the glyph order and width, then assert the generated count matches. A positional font where one stray pixel shifts every subsequent character is a debugging trap. At minimum:</p>
+
+<pre><code>_Static_assert(sizeof(font_widths) / sizeof(font_widths[0]) == 48,
+               "font table must contain 48 glyphs");
+_Static_assert(sizeof(font_offsets) / sizeof(font_offsets[0]) == 48,
+               "font offsets must contain 48 glyphs");</code></pre>
+
+<h4><code>png2c.py</code> is font-only</h4>
+<p>The Bible says to run <code>python3 png2c.py prepared_alpha.png alpha_ui.h</code>. That cannot work: the script always emits <code>font_image</code> plus widths/offsets. It does not read a 128×64 UI image, does not emit a 1024-byte page-major array, and does not accept an array name. The <code>alpha_ui.h</code>, <code>numeric_ui.h</code>, and <code>boot_ui.h</code> in the repo were generated by some other, missing script. That is a reproducibility defect, not just a documentation error.</p>
+
+<h4>Add <code>img2c.py</code></h4>
+<pre><code>#!/usr/bin/env python3
+# 128x64 1-bit PNG -> 1024-byte page-major C array, matching oled_show().
+import sys
+from PIL import Image
+
+src, name, out = sys.argv[1], sys.argv[2], sys.argv[3]
+img = Image.open(src).convert('L').point(lambda p: 255 if p >= 128 else 0, '1')
+if img.size != (128, 64):
+    raise SystemExit(f"expected 128x64, got {img.size}")
+px = img.load()
+
+with open(out, 'w') as f:
+    f.write(f"const unsigned char {name}[1024] = {{\n")
+    for page in range(8):
+        f.write("    ")
+        for x in range(128):
+            byte = 0
+            for bit in range(8):
+                if px[x, page * 8 + bit] &gt; 0:
+                    byte |= (1 &lt;&lt; bit)
+            f.write(f"0x{byte:02X}, ")
+        f.write("\n")
+    f.write("};\n")
+print(f"wrote {out}: 1024 bytes")</code></pre>
+
+<pre><code>convert alpha.png -resize "128x64!" -threshold 50% prepared_alpha.png
+python3 img2c.py prepared_alpha.png alpha_image alpha_ui.h
+convert numeric.png -resize "128x64!" -threshold 50% prepared_numeric.png
+python3 img2c.py prepared_numeric.png numeric_image numeric_ui.h
+convert boot.png -resize "128x64!" -threshold 50% prepared_boot.png
+python3 img2c.py prepared_boot.png boot_image boot_ui.h</code></pre>
+
+<p>Then delete <code>prepared_*.png</code> and add them to <code>.gitignore</code>. Keep the source PNGs and the generated headers; do not track the intermediates.</p>
+
+<h3 id="d6">5.6 Fixing the OLED text engine</h3>
+
+<p>The current function has two independent bugs. First, <code>int start_page = y / 8;</code> throws away <code>y % 8</code>, so <code>y = 30</code> draws at row 24. Second, it assigns <code>oled_buffer[...] = col_data;</code>, which erases the background instead of drawing over it. The result is text that sits six pixels too high and chews holes in the box art.</p>
+
+<h4>Correct renderer</h4>
+<pre><code>void oled_draw_custom_string(int x, int y, const char *text) {
+    int page  = y / 8;
+    int shift = y % 8;
+    int cursor_x = x;
+
+    while (*text) {
+        char c = *text++;
+        int index = glyph_index(c);          // your existing map, §5.2/§5.5
+        if (index &lt; 0 || index &gt;= font_char_count) {
+            cursor_x += 5;
+            continue;
+        }
+
+        int w = font_widths[index];
+        int off = font_offsets[index];
+
+        for (int col = 0; col &lt; w; col++) {
+            uint8_t d = font_image[off + col];
+            int sx = cursor_x + col;
+            if (sx &lt; 0 || sx &gt;= 128 || page &lt; 0 || page &gt;= 8) continue;
+
+            oled_buffer[page * 128 + sx] |= (uint8_t)(d &lt;&lt; shift);
+            if (shift &amp;&amp; page + 1 &lt; 8)
+                oled_buffer[(page + 1) * 128 + sx] |= (uint8_t)(d &gt;&gt; (8 - shift));
+        }
+        cursor_x += w + 1;
+    }
+}</code></pre>
+
+<h4>Add a fill helper</h4>
+<pre><code>void oled_fill_rect(int x, int y, int w, int h, bool on) {
+    for (int yy = y; yy &lt; y + h; yy++) {
+        for (int xx = x; xx &lt; x + w; xx++) {
+            int page = yy / 8, bit = yy % 8;
+            if (xx &lt; 0 || xx &gt;= 128 || page &lt; 0 || page &gt;= 8) continue;
+            if (on) oled_buffer[page * 128 + xx] |=  (1 &lt;&lt; bit);
+            else    oled_buffer[page * 128 + xx] &amp;= ~(1 &lt;&lt; bit);
+        }
+    }
+}</code></pre>
+
+<h4>Choose a real text region</h4>
+<p>The current art has <code>PREV:</code> at rows 0–7 and <code>CURR:</code> at rows 8–15; the selectable grid starts at row 20. There is no free 8-pixel row. Two clean options:</p>
+<ol>
+  <li><strong>Repurpose the header (recommended for the PoC).</strong> Each frame, fill rows 0–15 off, draw the message at <code>y = 0</code> (wrap at ~21 characters), and draw the multi-tap preview at <code>y = 8</code>. This simultaneously implements <code>PREV:/CURR:</code> and stops text from touching the grid.</li>
+  <li><strong>Edit the art.</strong> Reserve a 16-pixel message strip, move the grid down, and regenerate all three headers. More work, cleaner long-term layout.</li>
+</ol>
+
+<h3 id="d7">5.7 Non-blocking transmit state machine</h3>
+
+<p>The send path must never own the CPU. Replace the loop of <code>sleep_ms(100)</code> calls with a state machine ticked from the main loop. One symbol per 80–100 ms; <code>cyw43_arch_poll()</code> runs every iteration.</p>
+
+<pre><code>typedef enum { TX_IDLE = 0, TX_SYMBOL, TX_END } tx_phase_t;
+
+static tx_phase_t tx_phase = TX_IDLE;
+static char     tx_buf[64];
+static int      tx_len = 0;
+static int      tx_pos = 0;
+static int      tx_digit = 0;
+static uint32_t tx_next_ms = 0;
+static uint8_t  tx_msg_id = 0;</code></pre>
+
+<pre><code>void start_send(void) {
+    if (link_state != LINK_UP || msg_length == 0 || tx_phase != TX_IDLE) return;
+    memcpy(tx_buf, current_message, msg_length + 1);
+    tx_len = msg_length;
+    tx_pos = 0;
+    tx_digit = 0;
+    tx_msg_id++;
+    tx_phase = TX_SYMBOL;
+    tx_next_ms = now_ms();
+    printf("TX start msg=%u len=%d\n", tx_msg_id, tx_len);
+}</code></pre>
+
+<pre><code>// Call every main-loop iteration, after cyw43_arch_poll().
+void tx_tick(void) {
+    uint32_t now = now_ms();
+    if (tx_phase == TX_IDLE || now &lt; tx_next_ms) return;
+
+    if (tx_phase == TX_SYMBOL) {
+        int code = code_from_glyph(tx_buf[tx_pos]);
+        if (code &lt; 0) code = code_from_glyph('?');
+
+        int div = (tx_digit == 0) ? 36 : (tx_digit == 1) ? 6 : 1;
+        int sym = (code / div) % 6;
+        send_symbol(sym);                 // dummy_packets[sym], checks err_t
+        tx_next_ms = now + 80;
+
+        if (++tx_digit == 3) {
+            tx_digit = 0;
+            if (++tx_pos &gt;= tx_len) tx_phase = TX_END;
+        }
+    } else if (tx_phase == TX_END) {
+        send_control(TOK_END);            // optionally "END:&lt;id&gt;:&lt;len&gt;"
+        tx_next_ms = now + 80;
+        tx_phase = TX_IDLE;
+        printf("TX done msg=%u\n", tx_msg_id);
+        // Keep current_message for retry; clear it on DELETE or after an app ACK.
+    }
+}</code></pre>
+
+<p>DELETE during TX should cancel: <code>tx_phase = TX_IDLE; tx_pos = 0; tx_digit = 0;</code> and keep the draft. If <code>link_state</code> drops, abort the same way and print <code>TX aborted: no link</code>.</p>
+
+<div class="callout good">
+  <strong>Why this also improves SFO fidelity.</strong> A blocking send makes the inter-frame timing depend on the OLED refresh and the button handler. A state machine with a single send point per tick gives you a stable, measurable cadence — which is exactly what a future timing/frame-order channel needs. The PoC’s packet-name alphabet is the warm-up; the timing discipline starts here.
+</div>
+
+<h2 id="s6">6. Phase-by-phase remediation plan</h2>
+
+<p>Do the phases in order. Each phase has a single deliverable and a hard “done” test. Phase 3 is the handshake-first milestone; do not start Phase 4 until Phase 3 is green on both boards. Do not start Phase 8 until Phase 6 passes. The methodology is: <strong>freeze → unify → handshake → data transport → UI truth → hardware proof → document → crypto/stealth</strong>.</p>
+
+<h3>Phase 0 — Freeze and preserve the working state</h3>
+<p><strong>Goal:</strong> Make it impossible to lose the only working Jank Box image or the current source state.</p>
+<ol>
+  <li>Confirm the tree is clean and record the baseline: <code>git status -sb</code>, <code>git log -1 --format='%H %ad %s' --date=iso</code>.</li>
+  <li>Tag the current commit: <code>git tag -a pre-audit a5ee129 -m "Baseline before handshake PoC"</code>.</li>
+  <li>Copy both existing UF2s to a folder outside the repo (or <code>artifacts/uf2/</code>, gitignored): <code>phantom_link_tx.uf2</code> and <code>phantom_link_rx.uf2</code>.</li>
+  <li>Photograph the wiring, note which physical board is the Jank Box and which is the Barebones, and record the two COM ports.</li>
+  <li>Write a one-paragraph baseline test log: what boots, what the OLED shows, what the serial prints, what fails.</li>
+</ol>
+<p><strong>Done when:</strong> tag exists, both UF2s are archived, wiring photo and COM-port map are saved, baseline log is written.</p>
+
+<h3>Phase 1 — Repository hygiene before code changes</h3>
+<p><strong>Goal:</strong> A clean, reproducible base so the migration diff is readable.</p>
+<ol>
+  <li>Create the working branch: <code>git checkout -b poc/handshake</code>.</li>
+  <li>Add a root <code>.gitattributes</code> with <code>* text=auto eol=lf</code>; normalize C/headers.</li>
+  <li>Extend the root <code>.gitignore</code>: <code>prepared_*.png</code>, <code>*.png.png</code>, <code>my_ui.h</code>, <code>artifacts/</code>, <code>docs/*.pdf</code> (optional). Keep <code>build/</code>, <code>*.uf2</code>, <code>*.elf</code>, <code>*.bin</code>, <code>*.map</code>, <code>.vscode/</code>, <code>u8g2/</code>.</li>
+  <li>Untrack the intermediates: <code>git rm --cached Phantom_Link_rx/prepared_font.png Phantom_Link_rx/test_font.png Phantom_Link_tx/prepared_font.png Phantom_Link_tx/test_font.png</code>.</li>
+  <li>Remove the per-tree <code>.gitignore</code> once the root is authoritative.</li>
+  <li>Add <code>LICENSE</code> (MIT or Apache-2.0) and <code>docs/</code> (this audit, wiring, test log).</li>
+  <li>Fix the leading space in RX <code>main.c</code> line 1 and add final newlines.</li>
+</ol>
+<p><strong>Done when:</strong> <code>git status</code> is clean, no intermediate PNGs are tracked, line endings are normalized, and a fresh clone contains only sources, assets, docs, and build files.</p>
+
+<h3>Phase 2 — One firmware, two roles</h3>
+<p><strong>Goal:</strong> Both builds come from one <code>main.c</code> and both compile the same live UI/input loop.</p>
+<ol>
+  <li>Create <code>firmware/</code>; move the RX tree’s source and assets into it (or rename the RX tree). Keep the PNG sources in <code>assets/</code>.</li>
+  <li>Replace <code>#define IS_AP 0</code> with the <code>#ifndef IS_AP / #define IS_AP 1</code> default.</li>
+  <li>Replace the CMake target with the two-target <code>foreach</code> in §3.2.</li>
+  <li>Use the RX <code>main.c</code> as the shared source; keep the full input loop (<code>adc_init()</code>, <code>adc_gpio_init(26/27)</code>, <code>gpio_init/pull_up(14/15)</code>, joystick reads, button reads, <code>handle_select_button()</code>, <code>handle_delete_button()</code>) outside every role conditional. Do not copy the TX main.</li>
+  <li>Keep the RX UI, font, and codec exactly as they are for this phase. Do not add the handshake yet.</li>
+  <li>Build both targets, flash AP to the Barebones and STA to the Jank Box 5000. Verify each board boots the menu and responds to the joystick and buttons. Both units carry the identical BOM.</li>
+  <li>Archive the old TX tree (or delete it in a separate commit after both targets are verified).</li>
+</ol>
+<p><strong>Done when:</strong> both UF2s come from the same source; both boards boot the UI, move the cursor, and type; the serial banners differ only by role.</p>
+
+<h3>Phase 3 - Handshake, peer learning, heartbeat</h3>
+<p><strong>Goal:</strong> Both boards know whether the link is up, learn each other’s address from the traffic, and refuse to send into the void. This is the handshake-first milestone; the full data codec is Phase 4.</p>
+<ol>
+  <li>Replace <code>strncmp</code> with the exact <code>pkt_eq</code> parser in §5.3. Check every <code>udp_sendto</code>/<code>pbuf_alloc</code> return; log failures.</li>
+  <li>Add the control tokens, <code>link_state</code> enum, <code>peer_ip</code>/<code>peer_port</code>, and the <code>last_heard</code>/<code>last_ping</code> timers from §5.3.</li>
+  <li>STA sends <code>HELLO</code> every 1 s until <code>HELLO_ACK</code>; AP stores the source address and replies to it. Prefer unicast after the first handshake; do not rely on broadcast.</li>
+  <li>Both sides send <code>LINK_PING</code> every 1 s and reply <code>LINK_PONG</code>; any valid packet updates <code>last_heard_ms</code>.</li>
+  <li>Timeout at 3 s: set <code>LINK_DOWN</code>, print <code>LINK LOST</code>, blink/off the LED.</li>
+  <li>Gate SEND on <code>LINK_UP</code>; if down, print <code>NO LINK</code> and keep the draft.</li>
+  <li>Log state transitions only, not every packet; drive the CYW43 LED from <code>link_state</code>.</li>
+</ol>
+<p><strong>Done when:</strong> cold boot produces <code>HELLO</code> -&gt; <code>HELLO_ACK</code> -&gt; <code>LINK UP</code> on both; unplugging the STA produces <code>LINK LOST</code> on both within 3 s; replugging recovers without a reboot; SEND is refused while down.</p>
+
+<h3>Phase 4 - Make the data transport honest</h3>
+<p><strong>Goal:</strong> The bytes that leave one board are the bytes the other board displays, for every glyph the UI can type, without blocking Wi-Fi.</p>
+<ol>
+  <li>Replace the A-Z clamp with the three-digit Base-6 codec and the 49-code table (48 glyphs + space) in §5.2.</li>
+  <li>Refactor the send path into the non-blocking state machine in §5.7. Remove every <code>sleep_ms(100)</code> from the button handler.</li>
+  <li>Fix the END handler: compare the decoded message to <code>"SOS"</code>; print <code>Secret Msg: %s</code> otherwise; display the decoded message.</li>
+  <li>Keep <code>current_message</code> after send. Clear it on DELETE or after an application ACK.</li>
+  <li>Add a 500 ms inter-symbol timeout that resets the accumulator; log a warning on gap.</li>
+  <li>Add compile-time asserts: 48 drawable font glyphs, 49 transport codes (including space), and the quote is one glyph.</li>
+  <li>Prefer unicast now that Phase 3 has a peer; remove the broadcast fallback or keep it behind a debug flag.</li>
+</ol>
+<p><strong>Done when:</strong> <code>SOS</code>, <code>TEST 123</code>, <code>=+-.,?!()[]&quot;</code>, and a mixed 30-character message all round-trip; no character becomes <code>A</code>; the serial stays responsive during a send; no false SOS.</p>
+
+<h3>Phase 5 — UI truth</h3>
+<p><strong>Goal:</strong> Every visible box does what its label says, and text stops eating the art.</p>
+<ol>
+  <li>Apply the numeric box array and action map in §5.4.</li>
+  <li>Fix <code>move_cursor</code> to skip empty boxes and transition to Alpha only from column 0.</li>
+  <li>Wire <code>IN RANGE?</code> to <code>LINK_PING</code> + RTT display; wire <code>SOS</code> to load/send <code>"SOS"</code>; wire SPACE and punctuation.</li>
+  <li>Fix the glyph map: unify groups 8 and 13 to <code>".,()[]?!"</code>, add <code>-</code> to group 12 (five taps), and make the numeric punctuation box reachable.</li>
+  <li>Fix <code>oled_draw_custom_string</code> with the page+shift/OR renderer in §5.6; add <code>oled_fill_rect</code>.</li>
+  <li>Reserve the top 16 px as the message/preview region; implement <code>PREV:</code>/<code>CURR:</code> or remove the labels.</li>
+  <li>Implement the boot splash from <code>boot_image</code>; hold 2.5 s; then draw the main UI.</li>
+  <li>Drive <code>LINK</code> from <code>link_state</code>. Add a real battery ADC or remove <code>BAT:</code>.</li>
+  <li>Toggle <code>ui_active</code> during TX and while <code>LINK_DOWN</code>.</li>
+</ol>
+<p><strong>Done when:</strong> every selectable box has an action; no dead boxes; text is readable and does not overwrite the grid; the splash shows the correct art; <code>LINK</code> reflects reality.</p>
+
+<h3>Phase 6 — Hardware verification</h3>
+<p><strong>Goal:</strong> Replace “it compiles” with measured evidence.</p>
+<ol>
+  <li>Run the full acceptance matrix in §8; record pass/fail and serial logs.</li>
+  <li>Do a 30-minute soak with a message every 30 s; count drops/desyncs.</li>
+  <li>Measure current draw in AP and STA idle/TX; estimate 2000 mAh runtime.</li>
+  <li>Measure range: same room, 10 m, 30 m, through one wall; record RSSI if available or success rate.</li>
+  <li>Power-cycle 20 times; confirm the AP/STA roles are deterministic and the link recovers.</li>
+  <li>Save photos of both OLEDs and the wiring in <code>docs/</code>.</li>
+</ol>
+<p><strong>Done when:</strong> the test log has dated results, photos, current draw, range, and a known failure rate.</p>
+
+<h3>Phase 7 — Documentation, commit, tag</h3>
+<p><strong>Goal:</strong> A new person (or AI) can clone, build, flash, and test from the README alone.</p>
+<ol>
+  <li>Rewrite the README status/architecture using §9; keep the vision, label the gaps.</li>
+  <li>Add <code>docs/WIRING.md</code>, <code>docs/TEST_LOG.md</code>, and a “Build &amp; Flash” section with the exact commands in §7.</li>
+  <li>Commit the handshake PoC with a clear message; tag <code>poc-handshake</code>; push the branch.</li>
+  <li>Archive both UF2s with the tag name outside git.</li>
+  <li>Update the Bible’s next-step list and remove the stale <code>png2c.py</code>/rename instructions.</li>
+</ol>
+<p><strong>Done when:</strong> a fresh clone builds both targets with the documented commands; the README’s claims match the code; the tag and UF2s exist.</p>
+
+<h3>Phase 8 — Deferred: crypto, true SFO, enclosure</h3>
+<div class="callout warn">
+  <strong>Do not start this phase until Phase 6 passes.</strong> Adding Speck or MAC-layer SFO on top of an unreliable, unhandshaked link will produce two coupled mysteries. The handshake and the 3-digit codec are the foundation.
+</div>
+<ol>
+  <li><strong>Speck + nonce:</strong> add the nonce to <code>HELLO</code>/<code>HELLO_ACK</code>; derive a session key; encrypt the payload; add a CRC/HMAC. Keep the packet-name cover traffic.</li>
+  <li><strong>Framing:</strong> add <code>msg_id</code>, <code>seq</code>, <code>len</code>, and CRC to the data plane; drop duplicates; retransmit on gap.</li>
+  <li><strong>MAC-layer SFO:</strong> move the six-way choice from packet names to frame length/order/timing. Measure timing jitter before claiming it.</li>
+  <li><strong>Enclosure/battery:</strong> power budget, 2000 mAh bank, strain relief, antenna keep-out.</li>
+  <li><strong>Antenna:</strong> only on a spare board; document the certification risk.</li>
+</ol>
+
+<h2 id="s7">7. Exact build, flash, serial, and git commands</h2>
+
+<div class="callout info">
+  <strong>Paths.</strong> The examples assume the unified project at <code>/mnt/c/Users/Windows 10/OneDrive/Desktop/Phantom_Link/firmware</code> inside WSL. If you keep the RX folder for now, substitute it. Quote paths with spaces.
+</div>
+
+<h3>7.1 Build both targets</h3>
+
+<div class="callout good">
+  <strong>Verified 2026-11-18 on native Windows.</strong> Both targets built warning-free from the single <code>firmware/main.c</code> after a clean configure. Outputs: <code>phantom_link_ap.uf2</code> (670,720 bytes) and <code>phantom_link_sta.uf2</code> (677,376 bytes). The small size difference reflects the Wi-Fi role branch; the OLED, ADC, button, codec, and parser paths are shared and unconditional. SHA256: <code>E0C1C9CE3849B647B1865EF106C3F1004341D2E7EC5C3D349F0EDDF7EDD7D1E9</code> (AP), <code>D4CE0FB79BF9A82A4ACE21ACB2E099981BB626781348F790A5E82AAC9B1C5EC7</code> (STA).
+</div>
+
+<pre><code># PowerShell - exact commands used for the verified build
+$env:PICO_SDK_PATH = "C:\Users\Windows 10\.pico-sdk\sdk\2.3.1"
+$env:PATH = "C:\Users\Windows 10\.pico-sdk\tools\2.3.1\pioasm;C:\Users\Windows 10\.pico-sdk\picotool\2.3.1\picotool;C:\Users\Windows 10\.pico-sdk\ninja\v1.13.2;C:\Program Files (x86)\Arm GNU Toolchain arm-none-eabi\14.2 rel1\bin;$env:PATH"
+
+Set-Location "C:\Users\Windows 10\OneDrive\Desktop\Phantom_Link\firmware"
+Remove-Item build -Recurse -Force -ErrorAction SilentlyContinue
+cmake -B build -G Ninja -DPICO_BOARD=pico2_w "-DPICO_SDK_PATH=$env:PICO_SDK_PATH"
+cmake --build build -j4
+
+Get-Item build\phantom_link_ap.uf2, build\phantom_link_sta.uf2 | Select-Object Name,Length</code></pre>
+
+<p>The <code>PATH</code> entries point at the SDK's prebuilt <code>pioasm.exe</code> and <code>picotool.exe</code>. Without them CMake tries to build those host tools from source and fails when no native compiler is installed. The compiler path must contain spaces and is quoted per entry as shown.</p>
+
+<h4>Host-side validation</h4>
+<pre><code>python firmware\tests\validate_assets.py</code></pre>
+<p>Expected final line: <code>HOST VALIDATION: PASS</code>. This needs neither the SDK nor a board. It checks the 48-glyph/180-byte font, the merged quote, <code>V</code>, all 49 Base-6 codes, the 21-character round-trip, multi-tap reachability, the numeric hitboxes, and that the role flag no longer gates the UI or input path.</p>
+
+<h4>WSL alternative</h4>
+<pre><code>cd "/mnt/c/Users/Windows 10/OneDrive/Desktop/Phantom_Link/firmware"
+rm -rf build
+cmake -B build -DPICO_BOARD=pico2_w -DPICO_SDK_PATH="$HOME/pico-sdk"
+cmake --build build -j4
+ls -lh build/phantom_link_ap.uf2 build/phantom_link_sta.uf2</code></pre>
+
+<p>WSL was unavailable on the build machine after the audit (<code>execvpe(bash)</code> failed), so the WSL commands are unverified in this session. If CMake cannot find the SDK, verify <code>ls "$HOME/pico-sdk/pico_sdk_init.cmake"</code>. If the board definition is missing, confirm <code>pico2_w</code> exists in <code>"$HOME/pico-sdk/src/boards/include/boards/"</code>.</p>
+
+<h3>7.2 Flash from Windows</h3>
+<ol>
+  <li>Hold <strong>BOOTSEL</strong> on the Pico, plug USB, release. A <code>RPI-RP2</code> mass-storage volume appears.</li>
+  <li>Copy the correct UF2 to that volume. The board reboots automatically.</li>
+</ol>
+<pre><code># PowerShell: find the volume letter
+Get-Volume | Where-Object FileSystemLabel -eq 'RPI-RP2'
+
+# copy (replace E: with the actual letter)
+Copy-Item ".\build\phantom_link_ap.uf2" E:\
+
+# second board
+Copy-Item ".\build\phantom_link_sta.uf2" E:\</code></pre>
+
+<pre><code># WSL alternative (replace /mnt/e with the mounted RPI-RP2 volume)
+cp build/phantom_link_ap.uf2 /mnt/e/</code></pre>
+
+<h3>7.3 Serial monitors</h3>
+<pre><code># Windows: list COM ports
+Get-WmiObject Win32_SerialPort | Select-Object DeviceID,Description
+
+# PuTTY (install if needed), 115200 8N1
+putty.exe -serial COM5 -sercfg 115200,8,n,1,N</code></pre>
+
+<pre><code># WSL: identify the two CDC ports
+ls -l /dev/ttyACM*
+dmesg | tail -20
+
+# minicom (install once)
+sudo apt install minicom
+minicom -D /dev/ttyACM0 -b 115200
+# exit: Ctrl-A, then X
+
+# or screen
+screen /dev/ttyACM0 115200
+# exit: Ctrl-A, then K</code></pre>
+
+<p>USB CDC ignores the baud rate, but set 115200 anyway. Unplug one board to identify which ACM/COM port belongs to which role; label them. Keep one monitor per board during the handshake tests.</p>
+
+<h3>7.4 Git workflow</h3>
+<pre><code>cd "/mnt/c/Users/Windows 10/OneDrive/Desktop/Phantom_Link"
+
+git status -sb
+git checkout -b poc/handshake
+
+# after Phase 2/3/4 changes
+git add firmware/ docs/ .gitignore .gitattributes README.md
+git commit -m "poc: unify AP/STA firmware, 3-digit Base-6, handshake, non-blocking TX"
+
+git tag -a poc-handshake -m "Handshake-first PoC: HELLO/HELLO_ACK, heartbeat, full-glyph Base-6"
+git push -u origin poc/handshake
+git push origin poc-handshake</code></pre>
+
+<h3>7.5 Backup the working images</h3>
+<pre><code>mkdir -p artifacts/uf2
+cp Phantom_Link_tx/build/phantom_link_tx.uf2 artifacts/uf2/phantom_link_tx_pre-audit.uf2
+cp Phantom_Link_rx/build/phantom_link_rx.uf2 artifacts/uf2/phantom_link_rx_pre-audit.uf2
+sha256sum artifacts/uf2/*.uf2 | tee artifacts/uf2/SHA256SUMS</code></pre>
+
+<p>Keep <code>artifacts/</code> out of git (add it to <code>.gitignore</code>) or attach the UF2s to a GitHub release. Never rely on <code>build/</code> surviving a clean.</p>
+
+<h2 id="s8">8. Acceptance test matrix</h2>
+
+<div class="callout good">
+  <strong>Current status (2026-11-18).</strong> T1 is green: both targets build from one source with zero warnings, host validation passed for the font, codec, UI hitboxes, and unconditional input path, and `IS_AP` no longer gates the UI or controls. T2-T12 require the two boards and are still pending because no board was connected during the implementation session.
+</div>
+
+<table>
+  <thead><tr><th style="width:52px">ID</th><th style="width:190px">Test</th><th>Steps</th><th style="width:30%">Expected / pass criterion</th></tr></thead>
+  <tbody>
+    <tr><td><strong>T1</strong></td><td>Single-source build</td><td>Clean <code>build/</code>; build both targets from one <code>main.c</code>.</td><td>Two UF2s produced; no duplicated source; zero warnings with <code>-Wall -Wextra</code>.</td></tr>
+    <tr><td><strong>T2</strong></td><td>Dual boot UI</td><td>Flash AP to the Barebones and STA to the Jank Box 5000; power both; on each board, move the joystick and press each button.</td><td>Both show the menu; cursor moves; multi-tap types; DELETE deletes. Both boards carry the identical BOM. Splash timing is T11.</td></tr>
+    <tr><td><strong>T3</strong></td><td>Association</td><td>Boot AP, then STA; watch both serial monitors.</td><td>STA prints <code>STA status: joining</code>, then <code>STA status: up</code> and <code>STA IP: 192.168.4.2</code>; no <code>bad auth</code> or <code>network not found</code>.</td></tr>
+    <tr><td><strong>T4</strong></td><td>Handshake</td><td>Cold boot both; watch both monitors.</td><td>STA sends <code>HELLO</code>; AP replies <code>HELLO_ACK</code>; both print <code>LINK UP</code> with the peer IP (<code>192.168.4.1</code> on the STA, <code>192.168.4.2</code> on the AP).</td></tr>
+    <tr><td><strong>T5</strong></td><td>Heartbeat / loss / recovery</td><td>Power-cycle the STA. Watch the AP during the outage; watch both after the STA boots.</td><td>AP prints <code>LINK LOST</code> within 3 s; after the STA returns, the AP prints <code>LINK UP</code> without an AP reboot and the STA prints <code>LINK UP</code>; LED follows state.</td></tr>
+    <tr><td><strong>T6</strong></td><td>SOS round-trip</td><td>Select <code>SOS</code> (numeric row 2) on either board and press SELECT; watch the other serial log and OLED; repeat in the other direction.</td><td>Receiving serial prints <code>!!! SOS SIGNAL RECEIVED !!!</code> for an exact <code>SOS</code>; non-SOS messages print <code>Secret Msg: ...</code>; the other OLED shows <code>SOS</code>; no false SOS.</td></tr>
+    <tr><td><strong>T7</strong></td><td>Full glyph set</td><td>Send <code>TEST 123 =+-.,?!()[]&quot;</code> from each board; watch the other serial log and OLED.</td><td>Every glyph round-trips exactly in both directions; no character becomes <code>A</code>; logs show three frames per char.</td></tr>
+    <tr><td><strong>T8</strong></td><td>IN RANGE?</td><td>Select <code>IN RANGE?</code> on either board; press SELECT.</td><td><code>LINK_PING</code>/<code>LINK_PONG</code> exchange; <code>RTT: n ms</code> printed. The OLED label is baked art in this PoC, so serial is the pass criterion.</td></tr>
+    <tr><td><strong>T9</strong></td><td>No-link gate</td><td>Power off one board; wait for the other to print <code>LINK LOST</code>; try SEND on the powered board. Repeat with the roles reversed.</td><td><code>NO LINK</code>; the draft is kept; no packets claimed as sent.</td></tr>
+    <tr><td><strong>T10</strong></td><td>Non-blocking send</td><td>Send a 30-char message from either board; press DELETE mid-send.</td><td>Serial/OLED stay responsive; DELETE cancels; no Wi-Fi stall; message state is deterministic.</td></tr>
+    <tr><td><strong>T11</strong></td><td>Boot splash</td><td>Power-cycle both boards; time each splash.</td><td><code>boot.png</code> displays for ~2.5 s on both, then the menu; no blank 2 s gap.</td></tr>
+    <tr><td><strong>T12</strong></td><td>Soak</td><td>30 minutes, one message every 30 s, alternating directions.</td><td>≥99% delivery in the same room; no desync; no watchdog resets; current draw recorded.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout good">
+  <strong>Minimum green bar for "handshake PoC."</strong> T1-T7, T9, and T10 must pass after Phase 4. T8 is Phase 5; T11-T12 are required before calling it stable. Do not waive T7: shipping an A-Z-only demo would keep the original corruption defect.
+</div>
+
+<h2 id="s9">9. README / Bible truth audit</h2>
+
+<p>The README is a pitch, not a status report. That is fine for a portfolio, but every claim must be either true or explicitly labeled “planned.” Recruiters and interviewers read the repo; a claim that fails on inspection is worse than a smaller true claim.</p>
+
+<table>
+  <thead><tr><th style="width:34%">README claim</th><th style="width:26%">Reality at <code>a5ee129</code></th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td>“standalone, encrypted, bidirectional wireless communication device”</td><td>Bidirectional UI/transport exists; encryption does not.</td><td>Say “bidirectional wireless prototype; encryption planned.”</td></tr>
+    <tr><td>“bypassing standard Wi-Fi networking stacks”</td><td>Uses lwIP UDP over CYW43; bypasses a router, not the stack.</td><td>Say “routerless private Wi-Fi link using lwIP UDP.”</td></tr>
+    <tr><td>“Receiver (RX) acts as a private Access Point”</td><td>TX tree is <code>IS_AP 1</code>; RX is <code>IS_AP 0</code>.</td><td>State one role per build. Confirmed PoC: Barebones AP, Jank Box 5000 STA.</td></tr>
+    <tr><td>“forced static IP to bypass DHCP timing”</td><td>STA uses DHCP; no <code>netif_set_addr</code>; prints a hardcoded <code>.2</code>.</td><td>Remove the static-IP claim; learn the peer from <code>HELLO</code>.</td></tr>
+    <tr><td>“custom C struct, encrypts the payload, sync word, CRC”</td><td><code>PhantomPacket</code>/<code>calculate_crc</code> are dead; no packed attribute; no encryption.</td><td>Move to “planned”; implement framing/CRC/Speck in Phase 8.</td></tr>
+    <tr><td>“Custom Encryption: XOR cipher”</td><td>No XOR function exists.</td><td>Remove or label “planned.”</td></tr>
+    <tr><td>“packed with <code>__attribute__((packed))</code>”</td><td>The struct has no attribute and is unused.</td><td>Remove the claim until the struct is used.</td></tr>
+    <tr><td>“raw 2.4 GHz RF”</td><td>It is Wi-Fi, not raw RF.</td><td>Say “2.4 GHz Wi-Fi.”</td></tr>
+    <tr><td>“button functionality and menu wrap-around” unchecked</td><td>Implemented, with navigation bugs.</td><td>Check it after T2/T4 pass; note the fixes.</td></tr>
+    <tr><td>“MAC-layer steganography (SFO)” unchecked</td><td>Application-layer packet-name PoC only.</td><td>Say “Base-6 packet-name SFO proof of concept; MAC-layer planned.”</td></tr>
+    <tr><td>"2.5 second startup screen mockup" (gallery)</td><td><code>boot_image</code> exists but is unused; boot is 2 s blank + 500 ms clear.</td><td>Implement the splash in Phase 5, or label the image explicitly as a mockup.</td></tr>
+    <tr><td>PNG-to-C pipeline</td><td>Only the font converter is in the repo; UI headers cannot be regenerated.</td><td>Add <code>img2c.py</code> and document the exact commands.</td></tr>
+    <tr><td>“encrypted UDP link” checked in roadmap</td><td>No encryption, no CRC, no auth.</td><td>Uncheck; move to Phase 8.</td></tr>
+  </tbody>
+</table>
+
+<h3>Recommended README status block</h3>
+<pre><code>## Status (2026-11-18)
+
+**Working and host-verified**
+- 128x64 SH1106 SPI driver, 1024-byte framebuffer, custom variable-width font.
+- Joystick + two-button multi-tap UI (Alpha / Numeric pages).
+- Full 49-character Base-6 transport; exact-length HELLO/HELLO_ACK/
+  LINK_PING/LINK_PONG/END parsing; learned peer address.
+- 1 s heartbeat, 3 s timeout, LINK UP/LINK LOST logs, non-blocking TX.
+- One source, two targets: phantom_link_ap (IS_AP=1) and
+  phantom_link_sta (IS_AP=0). Both UF2s build warning-free.
+
+**Hardware-pending**
+- T2-T12: dual boot/UI, association, handshake, loss/recovery, SOS and
+  full-glyph round-trips, IN RANGE? RTT, no-link gate, 30-char send,
+  boot splash, 30-minute soak.
+
+**Not yet implemented**
+- Encryption (Speck planned), CRC/framing, authentication, replay protection.
+- Message IDs, sequence numbers, duplicate detection, retransmission.
+- MAC-layer StegoFrameOrder; the current SFO is an application-layer PoC.
+- Battery monitoring, enclosure, range/power measurements, antenna modification.
+
+**Architecture**
+One firmware source, two build roles: one Pico hosts a private AP, the other
+joins as STA. Both run the same UI, codec, and parser. The role is a build
+flag, not a separate codebase. The STA learns the AP from HELLO_ACK; the AP
+learns the STA from the received datagram. The SDK 2.3.1 AP build has no DHCP
+server, so the STA uses static 192.168.4.2/24 with gateway 192.168.4.1.</code></pre>
+
+<h3>Bible corrections</h3>
+<ul>
+  <li>Section 6.2–6.4 (font, custom string, multi-tap) are <strong>done</strong>; remove them from “immediate next steps.”</li>
+  <li>Section 6.5 (radio link) is <strong>partially done</strong>: Base-6 packet-name transport exists; encryption/CRC/framing do not. Rewrite it as “handshake first, then crypto.”</li>
+  <li>Section 6.6’s <code>png2c.py prepared_alpha.png alpha_ui.h</code> is wrong; that script is font-only. Use <code>img2c.py</code> for UI images.</li>
+  <li>Remove “rename <code>my_image</code> to <code>alpha_image</code>”; the current script emits <code>font_image</code>.</li>
+  <li>Add the Base-6 capacity table and the 3-digit recommendation.</li>
+  <li>Add the “one firmware, two roles” decision and the confirmed Barebones AP / Jank Box 5000 STA assignment.</li>
+  <li>Keep the Bible off the public repo: it contains personal and job-search data that should not be published.</li>
+</ul>
+
+<h2 id="s10">10. New-context handoff packet</h2>
+
+<p>A new context window cannot see this conversation, the local filesystem, or your hardware. It only knows what you attach and what you paste. The handoff below is designed so the next AI can start at hardware verification without re-deriving the audit: Phases 2-5 are implemented in <code>firmware/</code>, but no board was connected during that work.</p>
+
+<h3>10.1 What to attach or point to</h3>
+<ul class="check">
+  <li>This HTML file: <code>docs/PHANTOM_LINK_AUDIT_AND_HANDOFF.html</code> (or the Markdown digest).</li>
+  <li><code>firmware/main.c</code>, the active unified firmware.</li>
+  <li><code>firmware/oled.h</code>, <code>font_ui.h</code>, <code>alpha_ui.h</code>, <code>numeric_ui.h</code>, <code>boot_ui.h</code>.</li>
+  <li><code>firmware/CMakeLists.txt</code>, <code>lwipopts.h</code>, <code>README.md</code>.</li>
+  <li>The current serial log from both boards, and a photo of each attached OLED.</li>
+  <li>The exact commit hash you are on and the branch name.</li>
+  <li>The built UF2 names/sizes and the exact build command that produced them.</li>
+</ul>
+
+<h3>10.2 What to state in the first message</h3>
+<ol>
+  <li><strong>Project:</strong> Phantom Link, two Pico 2 W with identical BOM: SH1106 OLED, PSP joystick, SELECT GP14 / DELETE GP15 / BACK GP12. Barebones = AP host; Jank Box 5000 = STA client.</li>
+  <li><strong>Current commit/branch:</strong> e.g., <code>main @ a5ee129</code> or <code>poc/handshake @ &lt;hash&gt;</code>.</li>
+  <li><strong>Hardware roles:</strong> which physical board is AP, which is STA; which COM ports. Both have the full OLED/joystick/button BOM.</li>
+  <li><strong>What works:</strong> unified build, full UI/input on both roles, full 49-code Base-6, handshake/peer learning, heartbeat/timeout, non-blocking TX, boot splash, serial logging.</li>
+  <li><strong>What fails:</strong> the exact hardware test, the exact serial output, the exact OLED photo. If nothing has been flashed yet, say so explicitly.</li>
+  <li><strong>Decisions already made:</strong> one source/two targets; Barebones = AP, Jank Box 5000 = STA; 3-digit codec; boot splash in scope; encryption deferred until the handshake passes on hardware.</li>
+  <li><strong>Next task:</strong> flash both UF2s and run T2-T12 from §8, starting with T3/T4.</li>
+  <li><strong>Constraints:</strong> no crypto yet; no art rewrite; no clean build without a UF2 backup; README is not source of truth.</li>
+</ol>
+
+<h3>10.3 Copy-paste bootstrap prompt</h3>
+<pre><code>You are a senior embedded systems engineer. We are continuing the
+Phantom Link project. Read the attached PHANTOM_LINK_AUDIT_AND_HANDOFF.html
+before proposing code. Source of truth: the code, then the audit, then README.
+Do not trust README claims about encryption, static IP, or AP role; they are
+behind the firmware.
+
+REPO: https://github.com/GoodFractals/Phantom-Link
+COMMIT: [paste hash]
+BRANCH: [main or poc/handshake]
+
+HARDWARE
+- 2x Raspberry Pi Pico 2 W (RP2350 + CYW43439)
+- 2x Inland 1.3" SH1106 128x64 SPI OLED: CLK GP18, MOSI GP19, RES GP20,
+  DC GP16, CS GP17, +2 column offset
+- PSP-1000 joystick: X GP26/ADC0, Y GP27/ADC1
+- SELECT GP14, DELETE GP15, BACK GP12, all to GND with internal pull-ups
+- AP board: Barebones (host; OLED + joystick + buttons)
+- STA board: Jank Box 5000 (client; identical BOM)
+- Serial: [COMx / /dev/ttyACM0] = AP, [COMy / /dev/ttyACM1] = STA
+
+CURRENT STATE
+- Implemented in firmware/: one main.c, dual AP/STA targets, unconditional
+  OLED/ADC/button/input path, 49-code 3-digit Base-6, exact tokens,
+  HELLO/HELLO_ACK/LINK_PING/LINK_PONG, peer learning, 1 s heartbeat,
+  3 s timeout, non-blocking TX, boot splash. IS_AP selects only Wi-Fi mode.
+- SDK 2.3.1 AP build has no DHCP server (CYW43_NETUTILS=0), so the STA stops
+  DHCP and uses static 192.168.4.2/24, gateway 192.168.4.1.
+- Numeric-page status HUD: four RSSI bars on the STA (AP has no per-client
+  RSSI), filled/hollow link square beside LINK, BAT: reserved. GP12 BACK
+  mirrors DELETE.
+- Build verified on native Windows with Pico SDK 2.3.1:
+  firmware/build/phantom_link_ap.uf2 (670,720 bytes),
+  firmware/build/phantom_link_sta.uf2 (677,376 bytes), zero warnings.
+- Host validation passed: 48-glyph/180-byte font, all 49 codec values,
+  21-character round-trip, V reachable, corrected numeric hitboxes,
+  unconditional input/UI path.
+- First bench logs captured: AP up; STA waited for an IP. The static-address
+  fix targets that failure. Hardware acceptance T2-T12 is still pending.
+- Encryption, CRC/framing, authentication, sequence/duplicate detection,
+  and MAC-layer SFO are not implemented.
+- Phantom_Link_rx/ and Phantom_Link_tx/ are rollback/reference only.
+
+DECISIONS
+- One firmware source, two build targets: phantom_link_ap (IS_AP=1) and
+  phantom_link_sta (IS_AP=0).
+- AP role: Barebones; STA role: Jank Box 5000. Confirmed before flashing.
+- Codec: 3-digit Base-6 over 49 codes (48 glyphs + space), implemented.
+- STA address: static 192.168.4.2/24 for the PoC because the AP has no DHCP
+  server. Replace with DHCP or a configurable address before product use.
+- Do not add Speck or MAC-layer SFO until T1-T7, T9, T10 pass on hardware.
+
+NEXT TASK
+Flash the two UF2s and run the hardware acceptance matrix:
+1. Barebones AP: firmware/build/phantom_link_ap.uf2; Jank Box 5000 STA:
+   firmware/build/phantom_link_sta.uf2.
+2. Open one serial monitor per board at 115200 8N1.
+3. Run T2-T12 from the audit. Start with T3 (association) and T4 (handshake),
+   then T5 (loss/recovery), T6/T7 (SOS and full glyph set), T9/T10 (no-link
+   gate and non-blocking send).
+4. Paste both serial logs and a photo of each OLED. Report the first failing
+   test exactly; do not reimplement Phases 2-5.
+Minimum green bar: T1-T7, T9, T10. T8/T11/T12 are implemented and should be
+tested before calling the PoC stable.
+
+RULES
+- Do not rewrite the UI art.
+- Do not add crypto or MAC-layer SFO yet.
+- Do not clean build until the working UF2s are archived.
+- Do not claim "encrypted" or "covert" in docs until implemented.
+- Ask for serial logs/photos when a hardware result is ambiguous.
+- Keep the Project Bible out of the public repo (personal data).</code></pre>
+
+<h3>10.4 If the new AI cannot read files</h3>
+<p>Paste this audit’s §1–§5 plus the full <code>main.c</code> and <code>oled.h</code>. That is enough to reproduce the reasoning. The rest of the audit is the plan; the two source files are the current truth. Do not paste the Bible’s job-search section into a public tool or repo.</p>
+
+<h3>10.5 What “assist me” means in the new window</h3>
+<ul>
+  <li>The AI can propose exact diffs, but it cannot flash or see your hardware. You must run the build/flash/test and paste the serial output.</li>
+  <li>The AI should ask for the current file contents before editing if the commit has moved.</li>
+  <li>The AI should work in phases and stop at each acceptance test, not dump a 1,000-line rewrite.</li>
+  <li>The AI should preserve the working UF2 and the art; the audit is intentionally conservative about scope.</li>
+</ul>
+
+<h2 id="s11">11. Risk register</h2>
+
+<table>
+  <thead><tr><th style="width:30%">Risk</th><th style="width:12%">Likelihood</th><th style="width:12%">Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Two-firmware drift recurs</td><td>High</td><td>High</td><td>One source, two targets; delete the duplicate; CI builds both.</td></tr>
+    <tr><td>Broadcast send silently fails</td><td>High</td><td>High</td><td>Check <code>err_t</code>; handshake/unicast; log failures.</td></tr>
+    <tr><td>Packet loss desynchronizes Base-6</td><td>High</td><td>High</td><td>Sequence/timeout; 3-digit accumulator reset; duplicate detection.</td></tr>
+    <tr><td>Blocking send stalls Wi-Fi/UI</td><td>High</td><td>High</td><td>Non-blocking TX state machine; poll every loop.</td></tr>
+    <tr><td>Scope creep: crypto/SFO before handshake</td><td>High</td><td>High</td><td>Phase gate: no Phase 8 until Phase 6 passes T1-T7, T9, T10.</td></tr>
+    <tr><td>README overclaims damage the portfolio</td><td>High</td><td>Medium</td><td>Truth audit; “Implemented vs Planned”; tag the PoC honestly.</td></tr>
+    <tr><td>No backup of working UF2</td><td>Medium</td><td>High</td><td>Phase 0 archive + SHA256; tag.</td></tr>
+    <tr><td>Hardcoded Wi-Fi password in public repo</td><td>Medium</td><td>Medium</td><td>Move to config; rotate; lab-network disclaimer.</td></tr>
+    <tr><td>OneDrive/WSL build corruption</td><td>Medium</td><td>Medium</td><td>Move to ext4; exclude build; or build in a local clone.</td></tr>
+    <tr><td>Power/brownout under AP + OLED load</td><td>Medium</td><td>Medium</td><td>Measure current; add bulk capacitance; test on battery.</td></tr>
+    <tr><td>Range/interference worse than expected</td><td>Medium</td><td>Medium</td><td>Measure before claiming; keep the certified antenna; test channels.</td></tr>
+    <tr><td>Antenna mod voids certification</td><td>Low</td><td>Medium</td><td>Spare board only; document; do not present as product-ready.</td></tr>
+    <tr><td>No watchdog / hung device</td><td>Medium</td><td>Medium</td><td>Enable watchdog; feed on healthy loop; log reset reason.</td></tr>
+    <tr><td>No tests, regressions unnoticed</td><td>High</td><td>Medium</td><td>Host tests for codec/parser; acceptance matrix; CI build.</td></tr>
+    <tr><td>Personal data in public repo</td><td>Medium</td><td>High</td><td>Keep the Bible outside; review README/screenshots for personal info.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="a1">Appendix A — File inventory</h2>
+<table>
+  <thead><tr><th>Path</th><th>Role</th><th>Size / notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>Phantom_Link_rx/main.c</code></td><td>Live firmware: UI, input, Base-6 high/low, AP/STA bring-up</td><td>352 lines; <code>IS_AP 0</code>; the canonical starting point</td></tr>
+    <tr><td><code>Phantom_Link_tx/main.c</code></td><td>Stale pre-Base-6 firmware: AP only, no input loop</td><td>262 lines; <code>IS_AP 1</code>; archive after migration</td></tr>
+    <tr><td><code>oled.h</code></td><td>SH1106 SPI driver, framebuffer, font renderer, box/bitmap</td><td>168 lines; identical in both trees</td></tr>
+    <tr><td><code>font_ui.h</code></td><td>Variable-width font sprite + widths/offsets</td><td>179 bytes, 49 entries; quote split bug</td></tr>
+    <tr><td><code>alpha_ui.h</code></td><td>Alpha page background</td><td>1024 bytes</td></tr>
+    <tr><td><code>numeric_ui.h</code></td><td>Numeric page background</td><td>1024 bytes</td></tr>
+    <tr><td><code>boot_ui.h</code></td><td>Boot splash background</td><td>1024 bytes; unused</td></tr>
+    <tr><td><code>lwipopts.h</code></td><td>lwIP configuration</td><td>41 lines; no <code>SOF_BROADCAST</code></td></tr>
+    <tr><td><code>CMakeLists.txt</code></td><td>One target per tree; no shared source</td><td>Replace with two-target build</td></tr>
+    <tr><td><code>png2c.py</code></td><td>Font-sheet converter</td><td>Font-only; no UI converter</td></tr>
+    <tr><td><code>alpha.png</code>, <code>numeric.png</code>, <code>boot.png</code>, <code>font_sheet.png</code></td><td>Source art</td><td>Keep; regenerate headers reproducibly</td></tr>
+    <tr><td><code>prepared_font.png</code>, <code>test_font.png</code></td><td>Intermediate artifacts</td><td>Tracked; untrack and ignore</td></tr>
+    <tr><td><code>README.md</code></td><td>Public pitch/architecture</td><td>Ahead of code; rewrite status</td></tr>
+    <tr><td><code>u8g2/</code></td><td>Ignored reference clone</td><td>Not in build; remove/document</td></tr>
+  </tbody>
+</table>
+
+<h2 id="a2">Appendix B — Pin map</h2>
+<table>
+  <thead><tr><th>Signal</th><th>Pico 2 W pin</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>OLED SCLK</td><td>GP18</td><td><code>spi0</code> SCK, 10 MHz</td></tr>
+    <tr><td>OLED MOSI</td><td>GP19</td><td><code>spi0</code> TX</td></tr>
+    <tr><td>OLED RES</td><td>GP20</td><td>Active-low reset</td></tr>
+    <tr><td>OLED DC</td><td>GP16</td><td>Command/data select</td></tr>
+    <tr><td>OLED CS</td><td>GP17</td><td>Active-low chip select</td></tr>
+    <tr><td>OLED VCC/GND</td><td>3V3 / GND</td><td>SH1106 1.3&quot; module; verify 3.3 V logic</td></tr>
+    <tr><td>Joystick X</td><td>GP26 / ADC0</td><td>Center ~2048; thresholds 1000/3000</td></tr>
+    <tr><td>Joystick Y</td><td>GP27 / ADC1</td><td>Center ~2048; thresholds 1000/3000</td></tr>
+    <tr><td>SELECT</td><td>GP14</td><td>To GND; internal pull-up; active-low</td></tr>
+    <tr><td>DELETE</td><td>GP15</td><td>To GND; internal pull-up; active-low</td></tr>
+    <tr><td>BACK</td><td>GP12</td><td>To GND; internal pull-up; active-low; same action as DELETE</td></tr>
+    <tr><td>Battery sense (planned)</td><td>GP28 / ADC2</td><td>Divider; not implemented</td></tr>
+    <tr><td>CYW43 LED</td><td><code>CYW43_WL_GPIO_LED_PIN</code></td><td>Use for link state in the PoC</td></tr>
+  </tbody>
+</table>
+
+<h2 id="a3">Appendix C — Protocol token table</h2>
+<table>
+  <thead><tr><th>Token</th><th>Direction</th><th>Meaning / notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>PING</code></td><td>Data symbol 0</td><td>Base-6 digit 0; not a control token</td></tr>
+    <tr><td><code>ACK</code></td><td>Data symbol 1</td><td>Base-6 digit 1; do not use as handshake ACK</td></tr>
+    <tr><td><code>SYNC</code></td><td>Data symbol 2</td><td>Base-6 digit 2</td></tr>
+    <tr><td><code>PONG</code></td><td>Data symbol 3</td><td>Base-6 digit 3</td></tr>
+    <tr><td><code>DATA</code></td><td>Data symbol 4</td><td>Base-6 digit 4</td></tr>
+    <tr><td><code>READY</code></td><td>Data symbol 5</td><td>Base-6 digit 5</td></tr>
+    <tr><td><code>END</code></td><td>Data terminator</td><td>End of message; optionally carries <code>id:len</code></td></tr>
+    <tr><td><code>HELLO</code></td><td>STA → AP</td><td>Initiate handshake; optionally carries nonce later</td></tr>
+    <tr><td><code>HELLO_ACK</code></td><td>AP → STA</td><td>Handshake accepted; peer learned</td></tr>
+    <tr><td><code>LINK_PING</code></td><td>Both</td><td>Heartbeat; receiver replies <code>LINK_PONG</code></td></tr>
+    <tr><td><code>LINK_PONG</code></td><td>Both</td><td>Heartbeat reply; updates <code>last_heard</code></td></tr>
+  </tbody>
+</table>
+
+<h2 id="a4">Appendix D — Evidence commands</h2>
+<pre><code># Repo state
+git -C "C:\Users\Windows 10\OneDrive\Desktop\Phantom_Link" log -1 --format='%H%n%ad%n%s' --date=iso
+git -C "C:\Users\Windows 10\OneDrive\Desktop\Phantom_Link" ls-files
+git -C "C:\Users\Windows 10\OneDrive\Desktop\Phantom_Link" diff --no-index --stat -- \
+  "Phantom_Link_rx\main.c" "Phantom_Link_tx\main.c"
+
+# Byte counts (PowerShell)
+$rx = "C:\Users\Windows 10\OneDrive\Desktop\Phantom_Link\Phantom_Link_rx"
+(Select-String -Path "$rx\alpha_ui.h" -Pattern '0x[0-9A-Fa-f]{2}' -AllMatches).Matches.Count   # 1024
+(Select-String -Path "$rx\numeric_ui.h" -Pattern '0x[0-9A-Fa-f]{2}' -AllMatches).Matches.Count # 1024
+(Select-String -Path "$rx\boot_ui.h" -Pattern '0x[0-9A-Fa-f]{2}' -AllMatches).Matches.Count   # 1024
+(Select-String -Path "$rx\font_ui.h" -Pattern '0x[0-9A-Fa-f]{2}' -AllMatches).Matches.Count   # 179
+
+# Font table consistency: widths sum, offsets cumulative, no overflow
+# (see the audit's validation script; expected 179 bytes, 49 widths, 49 offsets)
+
+# Dead symbols
+Select-String -Path "$rx\*.c","$rx\*.h" -Pattern 'PhantomPacket|calculate_crc|boot_image|SOF_BROADCAST'</code></pre>
+
+<h2 id="a5">Appendix E — Glossary</h2>
+<table>
+  <thead><tr><th>Term</th><th>Meaning in this project</th></tr></thead>
+  <tbody>
+    <tr><td><strong>AP</strong></td><td>Wi-Fi Access Point; hosts the private network. Exactly one board must be AP.</td></tr>
+    <tr><td><strong>STA</strong></td><td>Wi-Fi Station; joins the AP. The other board is STA.</td></tr>
+    <tr><td><strong>Base-6</strong></td><td>Six-symbol alphabet; each frame carries log₂(6) ≈ 2.58 bits.</td></tr>
+    <tr><td><strong>SFO</strong></td><td>StegoFrameOrder; encoding data in the order/choice of frames. Current PoC uses packet names; true SFO uses MAC-layer frame order/timing.</td></tr>
+    <tr><td><strong>Symbol</strong></td><td>One of the six packet names: PING, ACK, SYNC, PONG, DATA, READY.</td></tr>
+    <tr><td><strong>Glyph</strong></td><td>One displayable character in the 48-glyph font table. Space is a transport-only code, not a glyph.</td></tr>
+    <tr><td><strong>Frame</strong></td><td>One UDP packet carrying one symbol (or a control token).</td></tr>
+    <tr><td><strong>Framebuffer</strong></td><td>The 1024-byte page-major OLED image buffer.</td></tr>
+    <tr><td><strong>pbuf</strong></td><td>lwIP packet buffer; must be freed after the callback/send.</td></tr>
+    <tr><td><strong>Handshake</strong></td><td>HELLO/HELLO_ACK + heartbeat; proves both peers are alive and learns addresses.</td></tr>
+    <tr><td><strong>PoC</strong></td><td>Proof of concept; the handshake-first milestone, not the finished product.</td></tr>
+  </tbody>
+</table>
+
+<div class="divider"></div>
+<p class="small"><strong>Document generated:</strong> 2026-11-18 · <strong>Baseline:</strong> <code>a5ee129</code> · <strong>Method:</strong> static code review, git diff, byte/table validation, file-hash comparison. No hardware was flashed or measured in this session. Hardware claims are marked “reported” where they come from the user’s notes or screenshot. This document is intentionally conservative: it treats “not implemented” as a defect when the README claims otherwise, and it treats “works on one board” as unproven until both roles pass the acceptance matrix.</p>
+
+</main>
+</body>
+</html>
