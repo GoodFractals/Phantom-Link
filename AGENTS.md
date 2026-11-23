@@ -34,6 +34,9 @@ python firmware/tests/validate_assets.py
 - UI work (Phase 6) may not edit `proto_*`, `net_link.c`, or timing constants.
 - No silent fallbacks. A crypto or SFO failure is logged and counted; it never downgrades to plaintext.
 - `poc/plaintext-v1` is the known-good fallback tag. Keep it buildable.
+- Never edit `README.md`; the user owns it and edits it manually. On branch/main
+  conflicts, keep main's README (`git checkout origin/main -- README.md`) and
+  merge around it. Applies to all projects.
 
 ## Domain docs
 
