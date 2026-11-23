@@ -134,9 +134,12 @@ void oled_draw_custom_string(int x, int y, const char *text) {
     int cursor_x = x;
 
     while (*text) {
-        int index = font_index_for_char(*text++);
+        char ch = *text++;
+        int index = font_index_for_char(ch);
         if (index < 0 || index >= font_char_count) {
-            cursor_x += 5; // space and unknown characters
+            // The font has no space glyph. Every normal glyph already leaves a
+            // one-pixel gap, so two more pixels give a three-pixel word gap.
+            cursor_x += (ch == ' ') ? 2 : 5;
             continue;
         }
 

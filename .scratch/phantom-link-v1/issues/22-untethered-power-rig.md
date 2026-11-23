@@ -11,3 +11,14 @@
 - [ ] One hour idle with LINK UP and no auto-cutoff.
 - [ ] Runtime is within 20% of the projection; the pack model is recorded.
 - [ ] The packs are marked so charge state is readable without unzipping the rig.
+
+## Verification
+
+2026-11-20 — The AP stopped broadcasting `Phantom_Link` from one rear
+Optiplex USB port while its UI stayed responsive and its flash verified
+byte-for-byte against `phantom_link_ap.elf`. Moving it to the other board's
+port restored the AP immediately; the STA then worked fine on the vacated
+port. A marginal port/cable cannot sustain the AP's continuous beaconing
+current while the MCU and OLED keep running. Check the power path before
+blaming firmware or the CYW43, and revisit this when measuring current and
+moving to packs.

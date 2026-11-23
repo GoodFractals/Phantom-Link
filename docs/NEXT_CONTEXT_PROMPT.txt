@@ -4,14 +4,15 @@ project. Read these before proposing code, in this order:
 1. AGENTS.md          build commands and hard rules
 2. GLOSSARY.md        the project's fixed vocabulary
 3. docs/GAMEPLAN.md   authoritative plan, frame spec, test matrix
-4. .scratch/phantom-link-v1/spec.md and issues/
-5. README.md          what exists today
+4. docs/NON_UI_GAMEPLAN.md  non-UI/UX roadmap and two-sided task split
+5. .scratch/phantom-link-v1/spec.md and issues/
+6. README.md          what exists today
 
 The code is the source of truth. The gameplan describes what to build next;
 the tickets are the executable backlog.
 
 REPO: https://github.com/GoodFractals/Phantom-Link
-COMMIT: 3230771
+COMMIT: 1b916f1
 BRANCH: poc/handshake (not pushed yet)
 FALLBACK TAG: poc/plaintext-v1  (known-good plaintext build)
 
@@ -47,19 +48,37 @@ CURRENT STATE
   the FINAL, suffix retransmit from the first hole, duplicate suppression,
   20-attempt bound with a NO ACK notice, bounded 64-deep TX queue drained by
   the main loop. DELETE mid-send aborts and drains.
-- BYE teardown: hold DELETE + BACK for 1.5 s; the peer drops to NO LINK
-  immediately. The 3 s timeout path still covers a power-cycle without BYE.
+- BYE teardown: hold **both buttons (select + delete/back) together for 2.5 s**;
+  the peer drops to NO LINK immediately. The 3 s timeout path still covers a
+  power-cycle without BYE. The STA re-issues `connect_async` if a transient
+  Wi-Fi state lasts WIFI_RETRY_MS, so an AP reboot cannot park it in `joining`.
 - The framed/session/reliable build is on hardware: LINK UP, bidirectional
   typed messages, per-frame ACKs, retry/delivery (`TX delivered ... attempt=1
   retransmits=0`), and DELETE mid-send abort all verified. The draft-clear-on-
   delivery behavior added in ebc49126 still needs one visual check.
+- OLED space advance is 2 px extra (3 blank pixels between words; 1 px between
+  letters) as of build 05ce2908. T2 visual check passed on hardware 2026-11-20.
+  The change is in firmware/oled.h + a main.c comment and is still uncommitted;
+  commit it with ticket 09.
 - Last verified build: Pico SDK 2.3.1, zero warnings under -Werror.
-  main.c build hash ebc49126
+  main.c build hash 05ce2908
   phantom_link_ap.uf2 681,472 bytes
-  SHA256 72CEBB4A1327EFB64F81E4A0961A35825FC0B03602326FE7BE2ED86234565B38
+  SHA256 6A39C9AA097A5DA07A7C1FDEC80A37103779FC1B475EAB032703E31A11BEF977
   phantom_link_sta.uf2 687,616 bytes
-  SHA256 EDC8B77112770D1C832C46B41948878D6A13FE9F240DADF93BDD5D5B00337582
+  SHA256 7745C6C34B45E20EBD8209F34A313BEFF6BFE330D6A5C9ECFEAD23FCE327E89A
   Rebuild rather than trusting these hashes; they move with every commit.
+- Live pair 2026-11-20: build 05ce2908, session 0x3a85d7cf, both sides linked
+  with duplicate=0 stale=0 wrong=0 gap=0 msgdrop=0. COM assignments follow the
+  USB serial (AP 07A06CFD644C1FC9 = COM5, STA 0AC087FCD9AAE588 = COM4).
+- Flashing: global skill `flash-picos` plus tools/flash_pico.ps1 and
+  tools/board_map.json. BOOTSEL volume is RP2350. The helper auto-identifies a
+  board by serial; ask yes/no before writing. `picotool` can reset/verify over
+  USB by serial, but this build rejects --ser on `load`, so a no-unplug reflash
+  needs the other board disconnected.
+- The AP's radio failed from one rear Optiplex USB port while its UI stayed
+  responsive and its flash verified OK; swapping to the other board's port
+  restored it. Suspect the power path before firmware or the CYW43. Logged in
+  issue 22.
 - Host validation: python firmware/tests/validate_assets.py
   Expected final line: HOST VALIDATION: PASS.
   Protocol tests: cmake -S firmware/host -B firmware/host/build -G Ninja
@@ -85,9 +104,13 @@ lowest-numbered open ticket whose blockers are all done.
 - 07 is code-complete; send, abort, and delivery are hardware-verified. One
   visual check remains: the draft clears on delivery and survives an abort.
 - 08 is code-complete; the BYE teardown needs its hardware check.
-- 09 (framing hardware acceptance) is the next gate; the risky parts already
-  passed, so finish the remaining T2-T12 rows and close it.
-- 22 (untethered power rig) is unblocked but needs hands on hardware.
+- 09 (framing hardware acceptance) is the next gate; T2 passed on 05ce2908,
+  finish T3-T12 plus the replay rerun with the current session ID.
+- 22 (untethered power rig) is unblocked but needs hands on hardware; a USB
+  port/cable sensitivity finding is already logged in its verification section.
+- 28 (link-state visual reference) is non-urgent UI polish, blocked by 25.
+- The numeric page will be rebuilt from scratch by the user later; keep it in
+  UI polish after 25/28 and do not disturb proto_* or timing constants.
 - Do not start a later ticket to "get ahead". The gates exist because crypto
   debugged on unstable framing is how projects die.
 
