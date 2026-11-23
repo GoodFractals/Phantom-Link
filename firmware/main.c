@@ -40,6 +40,7 @@
 #include "proto/proto_msg.h"
 #include "proto/proto_session.h"
 #include "proto/proto_txq.h"
+#include "proto/proto_crypto.h"
 
 #ifndef IS_AP
 #define IS_AP 1
@@ -1391,6 +1392,8 @@ int main(void) {
     drawMainUI();
 
     IP_ADDR4(&ap_addr, 192, 168, 4, 1);
+
+    if (!proto_crypto_self_test()) halt_error("CRYPTO FAIL");
 
     if (!wifi_init()) halt_error("WIFI FAIL");
     if (!udp_link_init()) halt_error("UDP FAIL");

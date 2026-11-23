@@ -11,3 +11,5 @@
 - [ ] CRC8 catches a corrupted burst.
 - [ ] Three repeats resolve to a majority decode.
 - [ ] A repeated or duplicated index inside one burst is rejected.
+- [ ] Bounded jitter on the TX scheduler varies inter-frame delay without
+  changing protocol timing constants or breaking ACK/retransmit bounds.

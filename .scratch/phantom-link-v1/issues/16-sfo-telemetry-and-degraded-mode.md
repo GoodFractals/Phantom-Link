@@ -11,3 +11,7 @@
 - [ ] A failed burst is logged as `SFO degraded`, not as a message failure.
 - [ ] Counters are exposed through a read-only accessor for the UI.
 - [ ] No SFO failure can block, delay, or reorder a user message.
+- [ ] A background decoy generator emits harmless `PING`/`SYNC` control frames
+  while idle, with a bounded rate. Decoys never carry message DATA and never
+  inflate `msgdrop` or mask a real ACK failure.
+- [ ] Decoy airtime/power cost is measured in ticket 22.

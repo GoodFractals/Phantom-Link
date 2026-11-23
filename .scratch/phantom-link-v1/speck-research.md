@@ -20,7 +20,9 @@ started; ticket 09 still gates ticket 10.
 **Vector A (official NSA paper Appendix C, byte form):**
 - key `00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f`
 - plaintext `20 6d 61 64 65 20 69 74 20 65 71 75 69 76 61 6c` (`" made it equival"`)
-- ciphertext `65 32 78 79 51 98 5d a6 18 0d 57 5c df fe 60 78`
+- ciphertext `18 0d 57 5c df fe 60 78 65 32 78 79 51 98 5d a6`
+  (confirmed by host KAT against Crypto++ TestVectors/speck.txt, which prints
+  the same bytes as words `180D575CDFFE6078 6532787951985DA6`)
 - Sources: [IACR ePrint 2013/404](https://eprint.iacr.org/2013/404) Appendix C;
   [Linux ARM patch thread with author byte-order clarification](https://lists.infradead.org/pipermail/linux-arm-kernel/2018-February/559214.html)
 

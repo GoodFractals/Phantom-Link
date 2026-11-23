@@ -25,6 +25,7 @@ add_library(phantom_proto STATIC
     "${PROTO_DIR}/proto_session.c"
     "${PROTO_DIR}/proto_msg.c"
     "${PROTO_DIR}/proto_txq.c"
+    "${PROTO_DIR}/proto_crypto.c"
 )
 target_include_directories(phantom_proto PUBLIC "${PROTO_DIR}")
 target_compile_options(phantom_proto PRIVATE ${WARNINGS})
@@ -63,6 +64,11 @@ add_executable(test_txq tests/test_txq.c)
 target_link_libraries(test_txq PRIVATE phantom_proto)
 target_compile_options(test_txq PRIVATE ${WARNINGS})
 add_test(NAME txq COMMAND test_txq)
+
+add_executable(test_crypto tests/test_crypto.c)
+target_link_libraries(test_crypto PRIVATE phantom_proto)
+target_compile_options(test_crypto PRIVATE ${WARNINGS})
+add_test(NAME crypto COMMAND test_crypto)
 
 add_executable(test_banner tests/test_banner.c)
 target_include_directories(test_banner PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")
