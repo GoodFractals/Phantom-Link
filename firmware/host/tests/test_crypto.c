@@ -388,6 +388,44 @@ static void test_header_mask(void) {
     CHECK(memcmp(hdr, original, sizeof hdr) == 0);
 }
 
+static void test_role_based_confirmation(void) {
+    static const uint8_t master[PC_MASTER_KEY_BYTES] = {
+        0x54,0x68,0x69,0x73,0x49,0x73,0x41,0x50,
+        0x6c,0x61,0x63,0x65,0x68,0x6f,0x6c,0x64,
+        0x42,0x75,0x69,0x6c,0x64,0x42,0x79,0x20,
+        0x43,0x68,0x61,0x6e,0x67,0x65,0x21,0x21
+    };
+    static const uint8_t salt[] = "BONNIE-CLYDE-v1";
+    static const uint8_t nonce[PC_CONFIRM_NONCE_BYTES] = {
+        0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08
+    };
+    uint8_t ap_to_sta[PC_DERIVED_KEY_BYTES], sta_to_ap[PC_DERIVED_KEY_BYTES];
+    uint8_t tag[PC_CONFIRM_TAG_BYTES];
+
+    pc_kdf(master, salt, sizeof salt - 1u, 0x01u, ap_to_sta);
+    pc_kdf(master, salt, sizeof salt - 1u, 0x02u, sta_to_ap);
+
+    /* STA originates HELLO with its tx key (sta_to_ap); AP verifies with its
+     * rx key, which must be the same sta_to_ap. */
+    pc_confirm_tag(sta_to_ap, 0x01u, 0x12345678u, 0u, nonce, tag);
+    CHECK(pc_confirm_check(sta_to_ap, 0x01u, 0x12345678u, 0u, nonce, tag));
+    CHECK(!pc_confirm_check(ap_to_sta, 0x01u, 0x12345678u, 0u, nonce, tag));
+}
+
+static void test_confirm_kat(void) {
+    static const uint8_t key[16] = {
+        0xf7,0x57,0x32,0xe0,0x47,0xd4,0xcb,0x0a,
+        0x2a,0x81,0x05,0x72,0x3a,0x6d,0xef,0xc3
+    };
+    static const uint8_t nonce[8] = { 0xd1,0xf9,0x7c,0x4a,0xff,0x98,0xfb,0x8b };
+    uint8_t a[8], b[8];
+    pc_confirm_tag(key, 0x01u, 0x8afa2aadu, 0u, nonce, a);
+    pc_confirm_tag(key, 0x01u, 0x8afa2aadu, 0u, nonce, b);
+    static const uint8_t want[8] = { 0xa4,0x62,0xc1,0xf2,0x93,0x15,0x75,0xa3 };
+    CHECK(memcmp(a, b, sizeof a) == 0);
+    CHECK(memcmp(a, want, sizeof want) == 0);
+}
+
 static void test_boot_self_test(void) {
     CHECK(proto_crypto_self_test() == true);
 }
@@ -405,6 +443,8 @@ int main(void) {
     test_lpi_fixed_length();
     test_decoy_delay();
     test_header_mask();
+    test_role_based_confirmation();
+    test_confirm_kat();
     test_boot_self_test();
 
     if (failures) {

@@ -266,7 +266,7 @@ void pc_confirm_tag(const uint8_t key[SPECK128_KEY_BYTES],
     input[6] = (uint8_t)(seq >> 16u);
     input[7] = (uint8_t)(seq >> 24u);
     memcpy(input + 8u, nonce, PC_CONFIRM_NONCE_BYTES);
-    input[12u] = label;
+    input[16u] = label;
 
     speck128_set_key(&sk, key);
     pc_cmac_trunc(speck_block_fn, &sk, input, sizeof input, tag);

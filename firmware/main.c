@@ -172,12 +172,19 @@ static void unmask_header_fields(uint8_t *buf) {
 static void psk_derive_keys(void) {
     static const uint8_t salt[] = "BONNIE-CLYDE-v1";
     static const uint8_t psk[PC_MASTER_KEY_BYTES] = PHANTOM_PSK_BYTES;
-    uint8_t derived[PC_DERIVED_KEY_BYTES];
+    uint8_t ap_to_sta[PC_DERIVED_KEY_BYTES], sta_to_ap[PC_DERIVED_KEY_BYTES];
 
-    pc_kdf(psk, salt, sizeof salt - 1u, 0x01u, derived);
-    memcpy(psk_tx_key, derived, sizeof psk_tx_key);
-    pc_kdf(psk, salt, sizeof salt - 1u, 0x02u, derived);
-    memcpy(psk_rx_key, derived, sizeof psk_rx_key);
+    pc_kdf(psk, salt, sizeof salt - 1u, 0x01u, ap_to_sta);
+    pc_kdf(psk, salt, sizeof salt - 1u, 0x02u, sta_to_ap);
+    /* Keys are role-based, not "my send / my receive". Both boards must use
+     * the same key for a given direction or the peer cannot verify/decrypt. */
+    if (is_ap) {
+        memcpy(psk_tx_key, ap_to_sta, sizeof psk_tx_key);
+        memcpy(psk_rx_key, sta_to_ap, sizeof psk_rx_key);
+    } else {
+        memcpy(psk_tx_key, sta_to_ap, sizeof psk_tx_key);
+        memcpy(psk_rx_key, ap_to_sta, sizeof psk_rx_key);
+    }
 }
 
 static ip_addr_t ap_addr;
@@ -353,6 +360,7 @@ static bool send_control_frame(uint8_t type) {
         memcpy(payload + 4u, &hi, 4u);
         pc_confirm_tag(key, label, session.session_id, session.tx_seq,
                        payload, payload + PC_CONFIRM_NONCE_BYTES);
+
         err = send_frame_to(dst, port, type, 0, payload,
                             (uint8_t)sizeof payload, 0);
     } else {

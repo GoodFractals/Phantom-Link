@@ -11,6 +11,14 @@ nonce, and direction label; wrong key, wrong label, wrong session, and tampered
 tag are all rejected. Firmware builds clean; `ctest` 10/10 and
 `HOST VALIDATION: PASS`. Hardware same-PSK/wrong-PSK checks join ticket 14.
 
+2026-11-22 — fixed a tag-construction bug: `pc_confirm_tag()` wrote the label
+at input byte 12 (clobbering a nonce byte) while byte 16 stayed uninitialized,
+making tags nondeterministic and handshakes fail with `AUTH FAILED`. Label now
+at byte 16, with a pinned KAT and determinism check. Derived keys are also
+role-based (AP→STA / STA→AP) so both boards use the same key per direction.
+Hardware verified on build a6cdff30: LINK UP, `auth=0`, `crypto=0`, decoys
+running.
+
 **Status:** ready-for-human (host green; hardware AUTH tests join ticket 14)
 
 - [x] Same-PSK boards exchange key confirmation in HELLO/HELLO_ACK (code complete).
