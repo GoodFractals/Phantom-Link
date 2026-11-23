@@ -41,6 +41,7 @@
 #include "proto/proto_session.h"
 #include "proto/proto_txq.h"
 #include "proto/proto_crypto.h"
+#include "proto/proto_psk.h"
 
 #ifndef IS_AP
 #define IS_AP 1
@@ -141,6 +142,21 @@ static proto_msg_rx_t rx_msg;
 typedef enum { LINK_DOWN = 0, LINK_UP } link_state_t;
 
 static struct udp_pcb *upcb = NULL;
+static uint8_t psk_tx_key[16];
+static uint8_t psk_rx_key[16];
+static uint32_t auth_failures = 0;
+
+static void psk_derive_keys(void) {
+    static const uint8_t salt[] = "BONNIE-CLYDE-v1";
+    static const uint8_t psk[PC_MASTER_KEY_BYTES] = PHANTOM_PSK_BYTES;
+    uint8_t derived[PC_DERIVED_KEY_BYTES];
+
+    pc_kdf(psk, salt, sizeof salt - 1u, 0x01u, derived);
+    memcpy(psk_tx_key, derived, sizeof psk_tx_key);
+    pc_kdf(psk, salt, sizeof salt - 1u, 0x02u, derived);
+    memcpy(psk_rx_key, derived, sizeof psk_rx_key);
+}
+
 static ip_addr_t ap_addr;
 static ip_addr_t peer_ip;
 static u16_t peer_port = UDP_PORT;
@@ -278,21 +294,37 @@ static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
 }
 
 static bool send_control_frame(uint8_t type) {
+    uint8_t payload[PC_CONFIRM_NONCE_BYTES + PC_CONFIRM_TAG_BYTES];
+    const ip_addr_t *dst = NULL;
+    u16_t port = UDP_PORT;
+    err_t err;
+
     if (!upcb) return false;
 
     if (peer_valid) {
-        return send_frame_to(&peer_ip, peer_port, type, 0, NULL, 0, 0) ==
-               ERR_OK;
+        dst = &peer_ip;
+        port = peer_port;
+    } else if (!is_ap) {
+        dst = &ap_addr;
+    } else {
+        printf("no peer yet; cannot send %s\n", frame_type_name(type));
+        return false;
     }
 
-    if (!is_ap) {
-        // The STA knows the AP's default address before HELLO_ACK arrives.
-        return send_frame_to(&ap_addr, UDP_PORT, type, 0, NULL, 0, 0) ==
-               ERR_OK;
+    if (type == PROTO_TYPE_HELLO || type == PROTO_TYPE_HELLO_ACK) {
+        uint32_t lo = get_rand_32(), hi = get_rand_32();
+        uint8_t label = (type == PROTO_TYPE_HELLO) ? 0x01u : 0x02u;
+        const uint8_t *key = (type == PROTO_TYPE_HELLO) ? psk_tx_key : psk_rx_key;
+        memcpy(payload, &lo, 4u);
+        memcpy(payload + 4u, &hi, 4u);
+        pc_confirm_tag(key, label, session.session_id, session.tx_seq,
+                       payload, payload + PC_CONFIRM_NONCE_BYTES);
+        err = send_frame_to(dst, port, type, 0, payload,
+                            (uint8_t)sizeof payload, 0);
+    } else {
+        err = send_frame_to(dst, port, type, 0, NULL, 0, 0);
     }
-
-    printf("no peer yet; cannot send %s\n", frame_type_name(type));
-    return false;
+    return err == ERR_OK;
 }
 
 static bool send_data_frame(const uint8_t *payload, uint8_t payload_len,
@@ -423,6 +455,25 @@ static void request_teardown(const char *reason) {
 static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
                          u16_t port) {
     note_peer(addr, port);
+
+    if (frame->type == PROTO_TYPE_HELLO ||
+        frame->type == PROTO_TYPE_HELLO_ACK) {
+        uint8_t label = (frame->type == PROTO_TYPE_HELLO) ? 0x01u : 0x02u;
+        const uint8_t *key = (frame->type == PROTO_TYPE_HELLO)
+                                 ? psk_rx_key : psk_tx_key;
+        if (frame->payload_len !=
+            (PC_CONFIRM_NONCE_BYTES + PC_CONFIRM_TAG_BYTES) ||
+            !frame->payload ||
+            !pc_confirm_check(key, label, frame->session_id, frame->seq,
+                              frame->payload,
+                              frame->payload + PC_CONFIRM_NONCE_BYTES)) {
+            auth_failures++;
+            printf("AUTH FAILED: %s bad tag (id=0x%08x seq=%u)\n",
+                   frame_type_name(frame->type), (unsigned)frame->session_id,
+                   (unsigned)frame->seq);
+            return;
+        }
+    }
 
     /* HELLO may introduce a new session. Every other frame must match the
      * session already in place; the window check enforces that below. */
@@ -1360,14 +1411,14 @@ static void session_stats_tick(uint32_t now) {
     last_session_stats_ms = now;
     printf("SESSION stats: id=0x%08x tx=%u accepted=%u duplicate=%u "
            "stale=%u wrong=%u gap=%u late=%u msg=%u msgdup=%u msgdrop=%u "
-           "retry=%u fail=%u\n",
+           "retry=%u fail=%u auth=%u\n",
            (unsigned)session.session_id, (unsigned)session.tx_seq,
            (unsigned)session.accepted, (unsigned)session.duplicates,
            (unsigned)session.stale, (unsigned)session.wrong_session,
            (unsigned)rx_gap, (unsigned)rx_out_of_order,
            (unsigned)rx_msg.completed, (unsigned)rx_msg.duplicates,
            (unsigned)rx_msg.dropped, (unsigned)tx_msg.retransmits,
-           (unsigned)tx_msg.failed);
+           (unsigned)tx_msg.failed, (unsigned)auth_failures);
 }
 
 int main(void) {
@@ -1394,6 +1445,7 @@ int main(void) {
     IP_ADDR4(&ap_addr, 192, 168, 4, 1);
 
     if (!proto_crypto_self_test()) halt_error("CRYPTO FAIL");
+    psk_derive_keys();
 
     if (!wifi_init()) halt_error("WIFI FAIL");
     if (!udp_link_init()) halt_error("UDP FAIL");

@@ -86,6 +86,23 @@ extern const pc_suite_ops_t pc_suite_speck_ctr_cmac;
 /* Reserved AEAD slot; today it is a loud stub, never selected silently. */
 extern const pc_suite_ops_t pc_suite_aead;
 
+#define PC_CONFIRM_NONCE_BYTES 8u
+#define PC_CONFIRM_TAG_BYTES 8u
+
+void pc_confirm_tag(const uint8_t key[SPECK128_KEY_BYTES],
+                    uint8_t label,
+                    uint32_t session_id,
+                    uint32_t seq,
+                    const uint8_t nonce[PC_CONFIRM_NONCE_BYTES],
+                    uint8_t tag[PC_CONFIRM_TAG_BYTES]);
+
+bool pc_confirm_check(const uint8_t key[SPECK128_KEY_BYTES],
+                      uint8_t label,
+                      uint32_t session_id,
+                      uint32_t seq,
+                      const uint8_t nonce[PC_CONFIRM_NONCE_BYTES],
+                      const uint8_t tag[PC_CONFIRM_TAG_BYTES]);
+
 /* Runs the known-answer checks used at boot; LINK UP is gated on this. */
 bool proto_crypto_self_test(void);
 

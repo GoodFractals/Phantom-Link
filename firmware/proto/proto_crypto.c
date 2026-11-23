@@ -248,6 +248,47 @@ static int speck_open(const uint8_t key[SPECK128_KEY_BYTES],
 const pc_suite_ops_t pc_suite_speck_ctr_cmac = { speck_seal, speck_open };
 const pc_suite_ops_t pc_suite_aead = { NULL, NULL };
 
+void pc_confirm_tag(const uint8_t key[SPECK128_KEY_BYTES],
+                    uint8_t label,
+                    uint32_t session_id,
+                    uint32_t seq,
+                    const uint8_t nonce[PC_CONFIRM_NONCE_BYTES],
+                    uint8_t tag[PC_CONFIRM_TAG_BYTES]) {
+    uint8_t input[4u + 4u + PC_CONFIRM_NONCE_BYTES + 1u];
+    speck128_key_t sk;
+
+    input[0] = (uint8_t)(session_id);
+    input[1] = (uint8_t)(session_id >> 8u);
+    input[2] = (uint8_t)(session_id >> 16u);
+    input[3] = (uint8_t)(session_id >> 24u);
+    input[4] = (uint8_t)(seq);
+    input[5] = (uint8_t)(seq >> 8u);
+    input[6] = (uint8_t)(seq >> 16u);
+    input[7] = (uint8_t)(seq >> 24u);
+    memcpy(input + 8u, nonce, PC_CONFIRM_NONCE_BYTES);
+    input[12u] = label;
+
+    speck128_set_key(&sk, key);
+    pc_cmac_trunc(speck_block_fn, &sk, input, sizeof input, tag);
+}
+
+bool pc_confirm_check(const uint8_t key[SPECK128_KEY_BYTES],
+                      uint8_t label,
+                      uint32_t session_id,
+                      uint32_t seq,
+                      const uint8_t nonce[PC_CONFIRM_NONCE_BYTES],
+                      const uint8_t tag[PC_CONFIRM_TAG_BYTES]) {
+    uint8_t expected[PC_CONFIRM_TAG_BYTES];
+    unsigned diff = 0;
+    unsigned i;
+
+    pc_confirm_tag(key, label, session_id, seq, nonce, expected);
+    for (i = 0; i < PC_CONFIRM_TAG_BYTES; i++) {
+        diff |= (unsigned)(expected[i] ^ tag[i]);
+    }
+    return diff == 0u;
+}
+
 /* Boot self-test: external Speck KAT plus a pinned Speck-CMAC tag. The CMAC
  * construction itself is validated against RFC 4493 in the host tests. */
 static const uint8_t SELFTEST_KEY[16] = {

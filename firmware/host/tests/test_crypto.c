@@ -256,6 +256,31 @@ static void test_ctr_and_suite_round_trip(void) {
     CHECK(pc_suite_aead.seal == NULL || pc_suite_aead.open == NULL);
 }
 
+static void test_key_confirmation(void) {
+    static const uint8_t key_a[16] = {
+        0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
+        0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f
+    };
+    static const uint8_t key_b[16] = {
+        0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,
+        0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f
+    };
+    static const uint8_t nonce[PC_CONFIRM_NONCE_BYTES] = {
+        0xa1,0xa2,0xa3,0xa4,0xa5,0xa6,0xa7,0xa8
+    };
+    uint8_t tag[PC_CONFIRM_TAG_BYTES], bad[PC_CONFIRM_TAG_BYTES];
+    const uint32_t session = 0x11223344u;
+
+    pc_confirm_tag(key_a, 0x01u, session, 0u, nonce, tag);
+    CHECK(pc_confirm_check(key_a, 0x01u, session, 0u, nonce, tag));
+    CHECK(!pc_confirm_check(key_b, 0x01u, session, 0u, nonce, tag));
+    CHECK(!pc_confirm_check(key_a, 0x02u, session, 0u, nonce, tag));
+    CHECK(!pc_confirm_check(key_a, 0x01u, session + 1u, 0u, nonce, tag));
+    memcpy(bad, tag, sizeof bad);
+    bad[0] ^= 0x01u;
+    CHECK(!pc_confirm_check(key_a, 0x01u, session, 0u, nonce, bad));
+}
+
 static void test_boot_self_test(void) {
     CHECK(proto_crypto_self_test() == true);
 }
@@ -268,6 +293,7 @@ int main(void) {
     test_cmac_lengths_rfc();
     test_kdf_domain_separation();
     test_ctr_and_suite_round_trip();
+    test_key_confirmation();
     test_boot_self_test();
 
     if (failures) {
