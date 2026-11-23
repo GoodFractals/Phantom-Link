@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 001 — True SFO vs Phantom Link</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<p class="small">Phantom Link teaching workspace · Lesson 001 · [[MISSION.md]]</p>
+<h1>True SFO vs Phantom Link's variant</h1>
+<p class="small">Read time: 6 minutes. One win: you can explain why our SFO is telemetry, not covert payload delivery.</p>
+
+<h2>1. What textbook SFO actually does</h2>
+<p>StegoFrameOrder (Sawicki et al., 2021) hides data in the <strong>order of IEEE 802.11 MAC frames</strong>. It exploits the non-deterministic frame ordering that normal wireless stacks produce, so an observer sees ordinary traffic while the sequence itself carries bits. This needs low-level access: monitor mode and raw frame injection at the MAC layer.</p>
+<p><a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC8471875/">Primary source: Sawicki et al., 2021</a></p>
+
+<h2>2. Why we cannot do that here</h2>
+<p>The Pico 2 W uses the CYW43439 through the <code>cyw43</code> driver. It exposes a normal AP or STA interface — no monitor mode, no raw 802.11 frame injection ([[RESOURCES.md]]: ADR 0002). The chip is a closed black box. So true SFO is physically unavailable, not merely difficult.</p>
+<div class="callout"><strong>Rule:</strong> never claim MAC-layer SFO or raw-frame access. ADR 0002 locks this.</div>
+
+<h2>3. Our tailored approach: order at the application layer</h2>
+<p>We move the same idea one layer up, into UDP packets:</p>
+<ul>
+  <li>One burst = <strong>four small datagrams</strong>, each tagged with its index 0–3.</li>
+  <li>The receiver observes their <strong>arrival order</strong>. That permutation encodes <strong>one nibble (4 bits)</strong>.</li>
+  <li>There are 24 possible orders of four items. We use 16 for nibbles 0–15 and <strong>reject the other 8</strong>.</li>
+  <li>A CRC8 over context + nibble detects corruption; <strong>three repeated bursts</strong> are resolved by majority decode.</li>
+</ul>
+<p>See <code>firmware/proto/proto_sfo.c</code> and ticket 15 ([[RESOURCES.md]]).</p>
+
+<h2>4. The critical boundary: telemetry only</h2>
+<p>Our SFO channel carries <strong>no user message content</strong>. It reports channel quality: good/total bursts, bits per second, reorder rate, and a <code>SFO degraded</code> state. If every burst fails, messages still deliver normally; the only consequence is a log line and a counter. This is the heart of ticket 16, which we are about to implement test-first.</p>
+<div class="callout">A failed burst is <strong>not</strong> a message failure. No SFO failure may block, delay, or reorder a user message.</div>
+
+<h2>5. Do not confuse SFO with LPI shaping</h2>
+<table>
+<tr><th>Layer</th><th>What it changes</th><th>Why</th></tr>
+<tr><td>SFO</td><td>Arrival order of 4 datagrams</td><td>Telemetry channel (this lesson)</td></tr>
+<tr><td>LPI shaping</td><td>Fixed frame length, random padding, decoy traffic, jitter, masked header</td><td>Make traffic less bursty/less obvious (ticket 29)</td></tr>
+<tr><td>Link crypto</td><td>Payload ciphertext + CMAC + key confirmation</td><td>Confidentiality and authentication (tickets 10–12)</td></tr>
+</table>
+<p>They are separate mechanisms. A decoy is not an SFO burst; a masked header is not a covert payload.</p>
+
+<h2>6. Retrieval practice</h2>
+<div class="quiz" tabindex="0">
+<p><strong>Q1.</strong> True SFO requires:</p>
+<p>A. RAW FRAME INJECTION MODE<br>B. NORMAL WIFI STATION MODE</p>
+<p class="answer">A — monitor mode and raw 802.11 frames; the CYW43439 cannot do this.</p>
+</div>
+<div class="quiz" tabindex="0">
+<p><strong>Q2.</strong> One Phantom Link burst encodes:</p>
+<p>A. FOUR BITS PER BURST<br>B. FOUR BYTES PER BURST</p>
+<p class="answer">A — one nibble, from the arrival order of four datagrams.</p>
+</div>
+<div class="quiz" tabindex="0">
+<p><strong>Q3.</strong> If SFO fails completely:</p>
+<p>A. MESSAGES STILL ARRIVE<br>B. MESSAGES ARE BLOCKED</p>
+<p class="answer">A — degraded mode logs and counts; delivery is unaffected.</p>
+</div>
+<p class="small">Hover or focus a question to reveal the answer. Ask me follow-ups whenever something is unclear — I am your teacher for this workspace. Next: [[reference/phantom-link-sfo.md]] and ticket 16.</p>
+</body>
+</html>
