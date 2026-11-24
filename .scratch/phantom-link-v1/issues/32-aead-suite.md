@@ -11,9 +11,11 @@ ChaCha20-Poly1305, 8-byte truncated Poly1305 tag, encrypt-then-MAC semantics.
 - [x] AEAD suite seals/opens through a suite-ops interface mirroring `pc_suite_ops_t`.
 - [x] AAD is the 18-byte frame header; tag lands in the 8-byte auth field.
 - [x] Verify-before-decrypt and constant-time tag compare preserved; exhaustive single-bit tamper coverage.
-- [ ] Wire `pc_suite_aead` to this module: it uses a 32-byte key while the Speck slot is typed to 16 bytes; session layer must supply a 32-byte derived key.
-- [ ] Suite selectable by compile-time define; Speck remains fallback.
-- [x] Wire format unchanged; no timing constant touched.
+- [x] Wire `pc_suite_aead` to this module: adapter expands the 16-byte suite key
+  to 32 bytes via KDF; compile-time `PHANTOM_USE_AEAD` selects it.
+- [x] Suite selectable by compile-time define; Speck remains default/fallback.
+- [x] Wire format unchanged (8-byte tag, 18-byte AAD); no timing constant touched.
+- [ ] Hardware: enable `PHANTOM_USE_AEAD`, flash both, verify T2–T12 and tamper.
 
 ## Verification
 

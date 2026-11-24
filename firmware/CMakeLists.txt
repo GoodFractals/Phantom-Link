@@ -19,7 +19,7 @@ string(SUBSTRING "${PHANTOM_SOURCE_HASH}" 0 8 PHANTOM_BUILD_HASH)
 pico_sdk_init()
 
 function(add_phantom_target target_name is_ap)
-    add_executable(${target_name} main.c proto/proto_frame.c proto/proto_session.c proto/proto_msg.c proto/proto_txq.c proto/proto_crypto.c proto/proto_lpi.c proto/proto_sfo.c proto/proto_sfo_telemetry.c proto/proto_reconnect.c proto/proto_zeroize.c)
+    add_executable(${target_name} main.c proto/proto_frame.c proto/proto_session.c proto/proto_msg.c proto/proto_txq.c proto/proto_crypto.c proto/proto_lpi.c proto/proto_sfo.c proto/proto_sfo_telemetry.c proto/proto_reconnect.c proto/proto_zeroize.c proto/proto_aead.c)
 
     target_compile_definitions(${target_name} PRIVATE
         IS_AP=${is_ap}
@@ -50,6 +50,11 @@ add_phantom_target(phantom_link_ap 1)
 add_phantom_target(phantom_link_sta 0)
 
 option(PHANTOM_WATCHDOG_TEST "Build forced-hang watchdog test firmware" OFF)
+option(PHANTOM_USE_AEAD "Use ChaCha20-Poly1305 instead of Speck CTR+CMAC" OFF)
+if(PHANTOM_USE_AEAD)
+    target_compile_definitions(phantom_link_ap PRIVATE PHANTOM_USE_AEAD=1)
+    target_compile_definitions(phantom_link_sta PRIVATE PHANTOM_USE_AEAD=1)
+endif()
 if(PHANTOM_WATCHDOG_TEST)
     target_compile_definitions(phantom_link_ap PRIVATE PHANTOM_WATCHDOG_TEST=1)
     target_compile_definitions(phantom_link_sta PRIVATE PHANTOM_WATCHDOG_TEST=1)

@@ -51,6 +51,7 @@
 #include "proto/proto_netcfg.h"
 #include "proto/proto_reconnect.h"
 #include "proto/proto_zeroize.h"
+#include "proto/proto_aead.h"
 
 #define WIFI_SSID PHANTOM_WIFI_SSID
 #define WIFI_PASSWORD PHANTOM_WIFI_PASSWORD
@@ -187,6 +188,41 @@ static reconnect_t rc;
 static uint32_t rc_epoch = 0;
 static zeroize_tracker_t zeroizer;
 static bool keys_cleared = false;
+
+static const pc_suite_ops_t *active_suite = &pc_suite_speck_ctr_cmac;
+
+#ifdef PHANTOM_USE_AEAD
+static void aead_expand_key(const uint8_t in[16], uint8_t out[32]) {
+    uint8_t master[32] = {0};
+    static const uint8_t salt[] = "AEAD-KEY";
+    memcpy(master, in, 16u);
+    pc_kdf(master, salt, sizeof salt - 1u, 0x05u, out);
+}
+
+static void aead_seal_adapter(const uint8_t key[16],
+                              const uint8_t nonce[12],
+                              const uint8_t *aad, size_t aad_len,
+                              uint8_t *buf, size_t len,
+                              uint8_t tag[8]) {
+    uint8_t expanded[32];
+    aead_expand_key(key, expanded);
+    aead_seal(expanded, nonce, aad, aad_len, buf, len, tag);
+}
+
+static int aead_open_adapter(const uint8_t key[16],
+                             const uint8_t nonce[12],
+                             const uint8_t *aad, size_t aad_len,
+                             uint8_t *buf, size_t len,
+                             const uint8_t tag[8]) {
+    uint8_t expanded[32];
+    aead_expand_key(key, expanded);
+    return aead_open(expanded, nonce, aad, aad_len, buf, len, tag);
+}
+
+static const pc_suite_ops_t pc_suite_aead_adapter = {
+    aead_seal_adapter, aead_open_adapter
+};
+#endif
 
 static void print_bssid(const char *label, const uint8_t bssid[6]) {
     printf("%s %02x:%02x:%02x:%02x:%02x:%02x\n", label,
@@ -382,9 +418,9 @@ static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
     if (status == PROTO_OK && type == PROTO_TYPE_DATA) {
         uint8_t nonce[PC_NONCE_BYTES];
         frame_nonce(frame.seq, nonce);
-        pc_suite_speck_ctr_cmac.seal(psk_tx_key, nonce, buf, PROTO_HEADER_LEN,
-                                     buf + PROTO_HEADER_LEN, payload_len,
-                                     buf + PROTO_HEADER_LEN + payload_len);
+        active_suite->seal(psk_tx_key, nonce, buf, PROTO_HEADER_LEN,
+                           buf + PROTO_HEADER_LEN, payload_len,
+                           buf + PROTO_HEADER_LEN + payload_len);
     } else if (status == PROTO_OK) {
         status = proto_frame_put_crc(buf, len);
     }
@@ -1000,7 +1036,7 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
         }
         frame_nonce(frame.seq, nonce);
         if (wire_len != PROTO_HEADER_LEN + frame.payload_len + PROTO_AUTH_LEN ||
-            pc_suite_speck_ctr_cmac.open(
+            active_suite->open(
                 psk_rx_key, nonce, masked_header, PROTO_HEADER_LEN,
                 buf + PROTO_HEADER_LEN, frame.payload_len,
                 buf + PROTO_HEADER_LEN + frame.payload_len) != 0) {
@@ -1846,6 +1882,11 @@ int main(void) {
     if (watchdog_enable_caused_reboot()) {
         printf("RESET reason: watchdog\n");
     }
+#ifdef PHANTOM_USE_AEAD
+    if (!aead_self_test()) halt_error("AEAD FAIL");
+    active_suite = &pc_suite_aead_adapter;
+    printf("SUITE ChaCha20-Poly1305\n");
+#endif
     watchdog_enable(8000u, false);
     status_load();
     {
