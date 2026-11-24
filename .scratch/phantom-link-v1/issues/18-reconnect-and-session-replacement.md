@@ -12,9 +12,12 @@
 - [ ] Ten consecutive power cycles recover every time (hardware pending).
 - [x] Backoff is bounded and exposed for logging (`reconnect_action_name`, `backoff_ms`).
 - [x] A stale session cannot coexist with the replacement (host epoch checks).
-- [ ] Replace the ticket 08 STA self-reboot workaround with a real reconnect
-  that does not replay the boot splash. A deliberate `RECONNECTING` HUD state
-  is preferred over silent retries or an unexpected splash.
+- [x] Replace the ticket 08 STA self-reboot workaround with a real reconnect
+  state machine; no `watchdog_reboot` path remains in `net_tick`.
+- [x] Bounded backoff logged as `RECONNECTING attempt=N backoff=Nms state=...`.
+- [x] Session epochs adopted on each new session via `reconnect_adopt_epoch`.
+- [ ] Deliberate `RECONNECTING` HUD state (parked UI work, ticket 25).
+- [ ] Hardware: 10 power cycles, AP/STA restart <10 s, no splash — pending.
 
 ## Verification
 

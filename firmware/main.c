@@ -47,6 +47,7 @@
 #include "proto/proto_sfo.h"
 #include "proto/proto_sfo_telemetry.h"
 #include "proto/proto_netcfg.h"
+#include "proto/proto_reconnect.h"
 
 #define WIFI_SSID PHANTOM_WIFI_SSID
 #define WIFI_PASSWORD PHANTOM_WIFI_PASSWORD
@@ -175,6 +176,8 @@ static uint32_t next_sfo_report_ms = 30000u;
 static const uint8_t ap_bssid[6] = PHANTOM_AP_BSSID;
 static uint32_t bssid_failures = 0;
 static bool bssid_enrolled = false;
+static reconnect_t rc;
+static uint32_t rc_epoch = 0;
 
 static void print_bssid(const char *label, const uint8_t bssid[6]) {
     printf("%s %02x:%02x:%02x:%02x:%02x:%02x\n", label,
@@ -504,6 +507,8 @@ static void adopt_session(uint32_t id, const char *why) {
     proto_session_init(&session, id);
     expected_rx_seq = 0;
     proto_msg_rx_reset(&rx_msg);
+    rc_epoch++;
+    reconnect_adopt_epoch(&rc, now_ms(), rc_epoch, link_state == LINK_UP);
 
     if (tx_active()) {
         printf("TX aborted: session reset\n");
@@ -1517,18 +1522,15 @@ static void wifi_service(uint32_t now) {
 
 static void net_tick(uint32_t now) {
     if (link_state == LINK_DOWN) {
+        reconnect_result_t rr = reconnect_tick(&rc, now, false);
+        if (!is_ap && (rr.action == RECONNECT_ACTION_START ||
+                       rr.action == RECONNECT_ACTION_RETRY)) {
+            wifi_join_sta();
+            printf("RECONNECTING attempt=%u backoff=%ums state=%s\n",
+                   (unsigned)rc.attempts, (unsigned)rr.backoff_ms,
+                   reconnect_state_name(rr.state));
+        }
         if (!is_ap) {
-            /* The CYW43 can keep a stale association across an AP reboot;
-             * driver-level leave/rejoin and STA-mode resets do not clear it.
-             * A software reboot is the verified recovery path. Ticket 18
-             * should replace this with a proper reconnect strategy. */
-            if (sta_ever_connected &&
-                (uint32_t)(now - last_heard_ms) >= 3 * WIFI_RETRY_MS) {
-                printf("Wi-Fi link stale; rebooting STA to recover\n");
-                sleep_ms(50);
-                watchdog_reboot(0, 0, 0);
-            }
-            // Only the STA initiates the handshake; the AP waits and learns the
             // peer from the received HELLO.
             if (wifi_ready &&
                 (uint32_t)(now - last_hello_ms) >= HELLO_INTERVAL_MS) {
@@ -1538,6 +1540,12 @@ static void net_tick(uint32_t now) {
             }
         }
         return;
+    }
+
+    reconnect_result_t up = reconnect_tick(&rc, now, true);
+    if (up.action == RECONNECT_ACTION_LINK_UP) {
+        printf("RECONNECT LINK UP epoch=%u state=%s\n",
+               (unsigned)up.epoch, reconnect_state_name(up.state));
     }
 
     if ((uint32_t)(now - last_heard_ms) >= LINK_TIMEOUT_MS) {
@@ -1680,6 +1688,7 @@ int main(void) {
     if (!proto_crypto_self_test()) halt_error("CRYPTO FAIL");
     psk_derive_keys();
     sfo_telemetry_init(&sfo_tel);
+    reconnect_init(&rc);
     {
         uint8_t i;
         for (i = 0; i < 6u; i++) {
