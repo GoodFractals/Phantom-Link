@@ -29,6 +29,10 @@ add_library(phantom_proto STATIC
     "${PROTO_DIR}/proto_lpi.c"
     "${PROTO_DIR}/proto_sfo.c"
     "${PROTO_DIR}/proto_sfo_telemetry.c"
+    "${PROTO_DIR}/proto_reconnect.c"
+    "${PROTO_DIR}/proto_fs.c"
+    "${PROTO_DIR}/proto_zeroize.c"
+    "${PROTO_DIR}/proto_aead.c"
 )
 target_include_directories(phantom_proto PUBLIC "${PROTO_DIR}")
 target_compile_options(phantom_proto PRIVATE ${WARNINGS})
@@ -83,8 +87,32 @@ target_link_libraries(test_sfo_telemetry PRIVATE phantom_proto)
 target_compile_options(test_sfo_telemetry PRIVATE ${WARNINGS})
 add_test(NAME sfo_telemetry COMMAND test_sfo_telemetry)
 
+add_executable(frame_probe "${CMAKE_CURRENT_LIST_DIR}/../../tools/frame_probe.c")
+target_link_libraries(frame_probe PRIVATE phantom_proto)
+target_compile_options(frame_probe PRIVATE ${WARNINGS})
+
 add_executable(test_banner tests/test_banner.c)
 target_include_directories(test_banner PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")
 target_compile_definitions(test_banner PRIVATE PHANTOM_BUILD_HASH="testhash")
 target_compile_options(test_banner PRIVATE ${WARNINGS})
 add_test(NAME banner COMMAND test_banner)
+
+add_executable(test_reconnect tests/test_reconnect.c)
+target_link_libraries(test_reconnect PRIVATE phantom_proto)
+target_compile_options(test_reconnect PRIVATE ${WARNINGS})
+add_test(NAME reconnect COMMAND test_reconnect)
+
+add_executable(test_fs tests/test_fs.c)
+target_link_libraries(test_fs PRIVATE phantom_proto)
+target_compile_options(test_fs PRIVATE ${WARNINGS})
+add_test(NAME fs COMMAND test_fs)
+
+add_executable(test_zeroize tests/test_zeroize.c)
+target_link_libraries(test_zeroize PRIVATE phantom_proto)
+target_compile_options(test_zeroize PRIVATE ${WARNINGS})
+add_test(NAME zeroize COMMAND test_zeroize)
+
+add_executable(test_aead tests/test_aead.c)
+target_link_libraries(test_aead PRIVATE phantom_proto)
+target_compile_options(test_aead PRIVATE ${WARNINGS})
+add_test(NAME aead COMMAND test_aead)
