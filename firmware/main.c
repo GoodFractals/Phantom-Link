@@ -46,6 +46,10 @@
 
 #include "proto/proto_sfo.h"
 #include "proto/proto_sfo_telemetry.h"
+#include "proto/proto_netcfg.h"
+
+#define WIFI_SSID PHANTOM_WIFI_SSID
+#define WIFI_PASSWORD PHANTOM_WIFI_PASSWORD
 
 #ifndef IS_AP
 #define IS_AP 1
@@ -60,8 +64,6 @@ static const bool is_ap = (IS_AP != 0);
 #define BTN_DELETE 15
 #define BTN_BACK   12   // wired to the same delete action as BTN_DELETE
 
-#define WIFI_SSID "TMOBILE-1219"
-#define WIFI_PASSWORD "12345678"
 #define UDP_PORT 4444
 
 // The SDK build used here compiles the cyw43 AP interface without the optional
@@ -169,6 +171,24 @@ static uint8_t sfo_arrival = 0;
 static uint8_t sfo_nibbles[SFO_REPEATS] = {0};
 static uint8_t sfo_nibble_count = 0;
 static uint32_t next_sfo_report_ms = 30000u;
+
+static const uint8_t ap_bssid[6] = PHANTOM_AP_BSSID;
+static uint32_t bssid_failures = 0;
+static bool bssid_enrolled = false;
+
+static void print_bssid(const char *label, const uint8_t bssid[6]) {
+    printf("%s %02x:%02x:%02x:%02x:%02x:%02x\n", label,
+           bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+}
+
+static int wifi_join_sta(void) {
+    const uint8_t *target = bssid_enrolled ? ap_bssid : NULL;
+    return cyw43_wifi_join(&cyw43_state, strlen(WIFI_SSID),
+                           (const uint8_t *)WIFI_SSID,
+                           strlen(WIFI_PASSWORD),
+                           (const uint8_t *)WIFI_PASSWORD,
+                           CYW43_AUTH_WPA2_AES_PSK, target, 3u);
+}
 
 static void frame_nonce(uint32_t seq, uint8_t nonce[PC_NONCE_BYTES]) {
     nonce[0] = 0x01u; /* outbound direction */
@@ -1452,6 +1472,19 @@ static void wifi_service(uint32_t now) {
             netif_default ? netif_ip4_addr(netif_default) : NULL;
         if (ip && !ip4_addr_isany(ip)) {
             if (!wifi_ready) {
+                if (bssid_enrolled) {
+                    uint8_t cur[6];
+                    if (cyw43_wifi_get_bssid(&cyw43_state, cur) != 0 ||
+                        memcmp(cur, ap_bssid, 6u) != 0) {
+                        bssid_failures++;
+                        printf("BSSID MISMATCH: expected/current\n");
+                        print_bssid("  expected", ap_bssid);
+                        print_bssid("  current ", cur);
+                        cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
+                        last_wifi_retry_ms = now;
+                        return;
+                    }
+                }
                 printf("STA IP: %s\n", ip4addr_ntoa(ip));
                 /* An AP reboot can change its BSSID/L2 mapping. Drop any ARP
                  * entry learned for the old AP before sending HELLO. */
@@ -1478,8 +1511,7 @@ static void wifi_service(uint32_t now) {
         (uint32_t)(now - last_wifi_retry_ms) >= WIFI_RETRY_MS) {
         last_wifi_retry_ms = now;
         printf("Wi-Fi reconnect attempt\n");
-        cyw43_arch_wifi_connect_async(WIFI_SSID, WIFI_PASSWORD,
-                                      CYW43_AUTH_WPA2_AES_PSK);
+        wifi_join_sta();
     }
 }
 
@@ -1548,10 +1580,14 @@ static bool wifi_init(void) {
     }
 
     if (is_ap) {
+        uint8_t own[6];
         cyw43_arch_enable_ap_mode(WIFI_SSID, WIFI_PASSWORD,
                                   CYW43_AUTH_WPA2_AES_PSK);
         wifi_ready = true;
         printf("AP active: 192.168.4.1\n");
+        if (cyw43_wifi_get_mac(&cyw43_state, CYW43_ITF_AP, own) == 0) {
+            print_bssid("AP BSSID:", own);
+        }
     } else {
         cyw43_arch_enable_sta_mode();
 
@@ -1561,12 +1597,12 @@ static bool wifi_init(void) {
         // The AP build has no DHCP server, so do not wait for a lease.
         sta_use_static_ip();
 
-        printf("STA connecting to %s...\n", WIFI_SSID);
+        printf("STA connecting to %s (BSSID %s)...\n", WIFI_SSID,
+               bssid_enrolled ? "enrolled" : "unbound");
 
         last_wifi_retry_ms = now_ms();
-        int err = cyw43_arch_wifi_connect_async(WIFI_SSID, WIFI_PASSWORD,
-                                                CYW43_AUTH_WPA2_AES_PSK);
-        if (err) printf("wifi_connect_async failed: %d\n", err);
+        int err = wifi_join_sta();
+        if (err) printf("wifi_join failed: %d\n", err);
         printf("STA join continues in the main loop\n");
     }
 
@@ -1608,14 +1644,14 @@ static void session_stats_tick(uint32_t now) {
     last_session_stats_ms = now;
     printf("SESSION stats: id=0x%08x tx=%u accepted=%u duplicate=%u "
            "stale=%u wrong=%u gap=%u late=%u msg=%u msgdup=%u msgdrop=%u "
-           "retry=%u fail=%u auth=%u crypto=%u decoy=%u\n",
+           "retry=%u fail=%u auth=%u crypto=%u decoy=%u bssid=%u\n",
            (unsigned)session.session_id, (unsigned)session.tx_seq,
            (unsigned)session.accepted, (unsigned)session.duplicates,
            (unsigned)session.stale, (unsigned)session.wrong_session,
            (unsigned)rx_gap, (unsigned)rx_out_of_order,
            (unsigned)rx_msg.completed, (unsigned)rx_msg.duplicates,
            (unsigned)rx_msg.dropped, (unsigned)tx_msg.retransmits,
-           (unsigned)tx_msg.failed, (unsigned)auth_failures, (unsigned)crypto_errors, (unsigned)decoy_tx_count);
+           (unsigned)tx_msg.failed, (unsigned)auth_failures, (unsigned)crypto_errors, (unsigned)decoy_tx_count, (unsigned)bssid_failures);
 }
 
 int main(void) {
@@ -1644,6 +1680,12 @@ int main(void) {
     if (!proto_crypto_self_test()) halt_error("CRYPTO FAIL");
     psk_derive_keys();
     sfo_telemetry_init(&sfo_tel);
+    {
+        uint8_t i;
+        for (i = 0; i < 6u; i++) {
+            if (ap_bssid[i] != 0u) { bssid_enrolled = true; break; }
+        }
+    }
 
     if (!wifi_init()) halt_error("WIFI FAIL");
     if (!udp_link_init()) halt_error("UDP FAIL");
@@ -1672,3 +1714,4 @@ int main(void) {
         sleep_ms(5);
     }
 }
+
