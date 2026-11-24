@@ -33,6 +33,7 @@ add_library(phantom_proto STATIC
     "${PROTO_DIR}/proto_fs.c"
     "${PROTO_DIR}/proto_zeroize.c"
     "${PROTO_DIR}/proto_aead.c"
+    "${PROTO_DIR}/proto_ratchet.c"
 )
 target_include_directories(phantom_proto PUBLIC "${PROTO_DIR}")
 target_compile_options(phantom_proto PRIVATE ${WARNINGS})
@@ -116,3 +117,8 @@ add_executable(test_aead tests/test_aead.c)
 target_link_libraries(test_aead PRIVATE phantom_proto)
 target_compile_options(test_aead PRIVATE ${WARNINGS})
 add_test(NAME aead COMMAND test_aead)
+
+add_executable(test_ratchet tests/test_ratchet.c)
+target_link_libraries(test_ratchet PRIVATE phantom_proto)
+target_compile_options(test_ratchet PRIVATE ${WARNINGS})
+add_test(NAME ratchet COMMAND test_ratchet)
