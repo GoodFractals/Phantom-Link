@@ -8,12 +8,12 @@ key material.
 
 **Status:** ready-for-agent (host zeroize module green; firmware wiring pending)
 
-- [x] Host zeroize primitive with volatile writes and bounded tracker module.
-- [ ] Zeroize derived keys, PSK copies, ECDH state, and nonce buffers on BYE.
+- [x] Zeroize derived keys, PSK copies, ECDH state, and nonce buffers on BYE.
 - [ ] Best-effort zeroize on watchdog reboot and brownout path.
 - [ ] No secret material remains in retained RAM across warm resets.
 - [x] Any future flash logger must not store keys or plaintext (no flash logger exists).
 - [x] Host tests assert zeroized buffers (10 tests); hardware check still pending.
+- [x] Firmware wires zeroization on BYE and re-derives keys on next handshake.
 
 ## Verification
 

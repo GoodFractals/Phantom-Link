@@ -48,6 +48,7 @@
 #include "proto/proto_sfo_telemetry.h"
 #include "proto/proto_netcfg.h"
 #include "proto/proto_reconnect.h"
+#include "proto/proto_zeroize.h"
 
 #define WIFI_SSID PHANTOM_WIFI_SSID
 #define WIFI_PASSWORD PHANTOM_WIFI_PASSWORD
@@ -182,6 +183,8 @@ static uint32_t bssid_failures = 0;
 static bool bssid_enrolled = false;
 static reconnect_t rc;
 static uint32_t rc_epoch = 0;
+static zeroize_tracker_t zeroizer;
+static bool keys_cleared = false;
 
 static void print_bssid(const char *label, const uint8_t bssid[6]) {
     printf("%s %02x:%02x:%02x:%02x:%02x:%02x\n", label,
@@ -211,6 +214,12 @@ static void mask_header_fields(uint8_t *buf) {
 
 static void unmask_header_fields(uint8_t *buf) {
     pc_ctr_xcrypt(psk_rx_key, HEADER_MASK_NONCE, buf + 6u, 12u);
+}
+
+static void register_key_secrets(void) {
+    zeroize_tracker_register(&zeroizer, psk_tx_key, sizeof psk_tx_key);
+    zeroize_tracker_register(&zeroizer, psk_rx_key, sizeof psk_rx_key);
+    keys_cleared = false;
 }
 
 static void psk_derive_keys(void) {
@@ -528,6 +537,10 @@ static void adopt_session(uint32_t id, const char *why) {
 static void begin_handshake(void) {
     uint32_t id = get_rand_32();
     if (id == 0) id = 1; /* keep zero as the "no session" sentinel */
+    if (keys_cleared) {
+        psk_derive_keys();
+        register_key_secrets();
+    }
     adopt_session(id, "new");
 }
 
@@ -541,6 +554,9 @@ static void request_teardown(const char *reason) {
         printf("BYE send failed\n");
     }
     set_link_down("BYE");
+    zeroize_tracker_clear_all(&zeroizer);
+    keys_cleared = true;
+    printf("SECRETS zeroized\n");
 }
 
 static void sfo_send_burst_step(void) {
@@ -1703,6 +1719,8 @@ int main(void) {
 
     if (!proto_crypto_self_test()) halt_error("CRYPTO FAIL");
     psk_derive_keys();
+    zeroize_tracker_init(&zeroizer);
+    register_key_secrets();
     sfo_telemetry_init(&sfo_tel);
     reconnect_init(&rc);
     if (watchdog_enable_caused_reboot()) {
