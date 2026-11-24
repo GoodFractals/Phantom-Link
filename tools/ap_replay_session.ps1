@@ -41,6 +41,10 @@ param(
 
     [int]$Repeat = 2,
 
+    [string]$RawHex = '',
+
+    [string]$ModeLabel = 'replay',
+
     [string]$LogDir = (Join-Path $PSScriptRoot '..\logs')
 )
 
@@ -54,8 +58,8 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$logPath = Join-Path $LogDir ('ap_replay_{0}.log' -f $stamp)
-$consolePath = Join-Path $LogDir ('ap_replay_{0}.console.log' -f $stamp)
+$logPath = Join-Path $LogDir ('{0}_{1}.log' -f $ModeLabel, $stamp)
+$consolePath = Join-Path $LogDir ('{0}_{1}.console.log' -f $ModeLabel, $stamp)
 Start-Transcript -Path $consolePath -Force | Out-Null
 
 $profileXml = Join-Path $env:TEMP 'phantom_link_wlan.xml'
@@ -131,10 +135,13 @@ try {
     }
 
     Write-Host ''
-    & powershell -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $PSScriptRoot 'replay_probe.ps1') `
-        -SessionId $SessionId -Seq $Seq -Target $Target -Port $Port -Repeat $Repeat `
-        2>&1 | Tee-Object -FilePath $logPath
+    $probeArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass',
+               '-File', (Join-Path $PSScriptRoot 'replay_probe.ps1'),
+               '-SessionId', $SessionId, '-Seq', $Seq,
+               '-Target', $Target, '-Port', $Port, '-Repeat', $Repeat)
+if ($RawHex) { $probeArgs += @('-RawHex', $RawHex) }
+Write-Host ("Probe mode: {0}" -f $ModeLabel)
+& powershell @probeArgs 2>&1 | Tee-Object -FilePath $logPath
 
     Write-Host ''
     Write-Host 'Waiting 3 s for the board serial log to settle...'

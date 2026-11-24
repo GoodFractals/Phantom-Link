@@ -42,6 +42,8 @@ param(
 
     [uint32]$Seq = 139000,
 
+    [string]$RawHex = '',
+
     [ValidateSet('HELLO', 'HELLO_ACK', 'DATA', 'ACK', 'PING', 'PONG', 'BYE', 'SFO', 'ERROR')]
     [string]$Type = 'PING',
 
@@ -137,25 +139,40 @@ if ($SelfTest) {
     return
 }
 
-if ($SessionId -eq 0) {
-    throw 'SessionId is required (use -SessionId 0x........ from the SESSION stats line).'
+if ($RawHex) {
+    $clean = ($RawHex -replace '[^0-9A-Fa-f]', '')
+    if ($clean.Length % 2 -ne 0) { throw 'RawHex must contain an even number of hex digits.' }
+    $frame = New-Object byte[] ($clean.Length / 2)
+    for ($i = 0; $i -lt $frame.Length; $i++) {
+        $frame[$i] = [Convert]::ToByte($clean.Substring($i * 2, 2), 16)
+    }
+    $hex = Format-FrameHex -Bytes $frame
+} else {
+    if ($SessionId -eq 0) {
+        throw 'SessionId is required (use -SessionId 0x........ from the SESSION stats line).'
+    }
+    $frame = New-Frame -Session $SessionId -Sequence $Seq -FrameType $TypeCodes[$Type]
+    $hex = Format-FrameHex -Bytes $frame
 }
 
-$frame = New-Frame -Session $SessionId -Sequence $Seq -FrameType $TypeCodes[$Type]
-$hex = Format-FrameHex -Bytes $frame
-
-Write-Host 'Phantom Link replay probe (plaintext)'
+Write-Host 'Phantom Link raw frame probe'
 Write-Host ('  target:      {0}:{1}/udp' -f $Target, $Port)
 Write-Host ('  bind:        {0}' -f $BindAddress)
-Write-Host ('  session:     0x{0:X8}' -f $SessionId)
-Write-Host ('  type:        {0} ({1})' -f $Type, $TypeCodes[$Type])
-Write-Host ('  seq:         {0} (stale)' -f $Seq)
+if (-not $RawHex) {
+    Write-Host ('  session:     0x{0:X8}' -f $SessionId)
+    Write-Host ('  type:        {0} ({1})' -f $Type, $TypeCodes[$Type])
+    Write-Host ('  seq:         {0} (stale)' -f $Seq)
+}
 Write-Host ('  wire length: {0} bytes' -f $frame.Length)
 Write-Host ('  frame:       {0}' -f $hex)
 Write-Host ''
 Write-Host 'Expected on the receiving board:'
-Write-Host ('  RX stale type={0} seq={1} id=0x{2:X8} (... stale=N ...)' -f $Type, $Seq, $SessionId)
-Write-Host '  accepted must not increase.'
+if ($RawHex) {
+    Write-Host '  rejection logged (crypto or stale); accepted and crypto counters confirm.'
+} else {
+    Write-Host ('  RX stale type={0} seq={1} id=0x{2:X8} (... stale=N ...)' -f $Type, $Seq, $SessionId)
+    Write-Host '  accepted must not increase.'
+}
 Write-Host ''
 
 if ($DryRun) {
@@ -175,7 +192,8 @@ while (-not (Get-NetIPAddress -AddressFamily IPv4 -IPAddress $BindAddress -Error
 # Give Windows a moment to finish duplicate-address detection before binding.
 Start-Sleep -Milliseconds 500
 
-$endpoint = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, 0)
+$endpoint = New-Object System.Net.IPEndPoint(
+    [System.Net.IPAddress]::Parse($BindAddress), 0)
 $udp = New-Object System.Net.Sockets.UdpClient($endpoint)
 try {
     for ($i = 1; $i -le $Repeat; $i++) {
