@@ -100,19 +100,18 @@ DECISIONS (see docs/adr/)
 NEXT TASK
 Work the ticket frontier. Read .scratch/phantom-link-v1/issues/ and pick the
 lowest-numbered open ticket whose blockers are all done.
-- 01-06 are code-complete and their hardware criteria close with ticket 09.
-- 07 is code-complete; send, abort, and delivery are hardware-verified. One
-  visual check remains: the draft clears on delivery and survives an abort.
-- 08 is code-complete; the BYE teardown needs its hardware check.
-- 09 (framing hardware acceptance) is the next gate; T2 passed on 05ce2908,
-  finish T3-T12 plus the replay rerun with the current session ID.
-- 22 (untethered power rig) is unblocked but needs hands on hardware; a USB
-  port/cable sensitivity finding is already logged in its verification section.
-- 28 (link-state visual reference) is non-urgent UI polish, blocked by 25.
-- The numeric page will be rebuilt from scratch by the user later; keep it in
-  UI polish after 25/28 and do not disturb proto_* or timing constants.
-- Do not start a later ticket to "get ahead". The gates exist because crypto
-  debugged on unstable framing is how projects die.
+- 01-09 are CLOSED (hardware framing, replay, BYE, abort all proven).
+- 10-16 are CLOSED at host level; 16 also verified on hardware (SFO telemetry).
+- 14 is OPEN: encrypted hardware acceptance (encrypted + wrong-PSK builds,
+  T2-T12, T15-T17, capture review). Replay/CMAC-tamper PC injection is built
+  (tools/frame_probe.c + tools/replay_probe.ps1 -RawHex) but needs a clean rerun.
+- 18, 31, 32, 36 host modules are green; firmware/main.c integration pending.
+- 35/37/38 research and review packages are complete; no claims until 37 passes.
+- 33 (ratchet) and 34 (encrypted header) are in progress as host modules.
+- 22 (untethered power rig) is unblocked but needs hands on hardware.
+- UI/UX tickets 24, 25, 26, 28 are parked by user scope.
+- BSSID identity lock is implemented in main.c/netcfg headers (uncommitted);
+  AP BSSID 88:a2:9e:5b:ff:69 enrolled in proto/netcfg_local.h.
 
 RULES
 - One ticket, one commit, named after the ticket number.
