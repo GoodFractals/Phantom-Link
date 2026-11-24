@@ -5,7 +5,13 @@ whether biometrics or enclosures add real value on this platform.
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** closed
+
+- [x] Documented that possession defeats PSK and flash readout.
+- [x] Evaluated tamper seals, enclosure switches, and fingerprint modules.
+- [x] Rejected security theater with explicit reasoning.
+- [x] Recommended the smallest honest set of controls.
+- [x] Provided datasheet Limitations text.
 
 - [ ] Document that possession defeats PSK and flash readout.
 - [ ] Evaluate tamper-evident seals, enclosure switches, and fingerprint modules.
