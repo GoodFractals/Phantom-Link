@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 001 — Phantom Link security layer</title>
+<link rel="stylesheet" href="../teach/assets/lesson.css">
+</head>
+<body>
+<p class="small">Phantom Link security teaching workspace · Lesson 001 · [[MISSION.md]]</p>
+<h1>The security layer, layer by layer</h1>
+<p class="small">Read time: 8 minutes. One win: you can write the datasheet security section without overclaiming.</p>
+
+<h2>1. The threat model first</h2>
+<p>This is a <strong>two-party</strong> link (ADR 0004). Membership is physical possession of a board. There is no secure element, so a PSK in firmware is a <strong>pairing boundary</strong>, not a secret against someone holding the hardware. There is no forward secrecy and no independent audit. These limits belong in the datasheet.</p>
+
+<h2>2. The stack, bottom to top</h2>
+<table>
+<tr><th>Layer</th><th>Mechanism</th><th>What it buys</th></tr>
+<tr><td>Wi-Fi</td><td>WPA2-AES</td><td>Encrypts the radio link to whatever AP the STA joined. Does not identify <em>which</em> AP.</td></tr>
+<tr><td>Identity</td><td>BSSID lock</td><td>STA joins only the enrolled hardware address, even with duplicate SSIDs nearby.</td></tr>
+<tr><td>Handshake</td><td>Key confirmation</td><td>HELLO/HELLO_ACK carry a CMAC tag; wrong PSK → <code>AUTH FAILED</code>.</td></tr>
+<tr><td>Payload</td><td>Speck128/128 CTR</td><td>Confidentiality of message bytes on the wire.</td></tr>
+<tr><td>Integrity</td><td>8-byte CMAC</td><td>Tamper detection; verify before decrypt.</td></tr>
+<tr><td>Metadata</td><td>XOR mask on session/seq/ack</td><td>Less obvious header values; not full header privacy.</td></tr>
+</table>
+
+<h2>3. The primitive: Speck128/128</h2>
+<p>A 32-round ARX block cipher (add–rotate–xor) from NSA research. We use the reference implementation guide's key schedule and KAT vectors. Words are little-endian — the paper's word order confused our first test, so the host KAT pins the exact bytes. See <a href="https://nsacyber.github.io/simon-speck/implementations/ImplementationGuide1.1.pdf">NSA Implementation Guide</a> and <code>proto_crypto.c</code>.</p>
+
+<h2>4. Keys: role-based, not sender-relative</h2>
+<p>The 32-byte PSK feeds a CMAC-based KDF. Two labels produce two directional keys: <code>0x01</code> for AP→STA and <code>0x02</code> for STA→AP. Both boards derive the same key for a given direction. Our first implementation used "my send / my receive", so the two boards disagreed and every HELLO failed — the fix made keys <strong>role-based</strong>.</p>
+
+<h2>5. Encryption and authentication order</h2>
+<p>Encrypt-then-MAC: CTR-encrypt the padded payload, then CMAC the 18-byte header (AAD) together with the ciphertext. The receiver <strong>verifies the tag before decrypting</strong>; a bad tag increments <code>crypto</code> and drops the frame without touching session state. The tag is the first 8 bytes of the CMAC, MSB-first, following <a href="https://www.rfc-editor.org/rfc/rfc4493.txt">RFC 4493</a>.</p>
+<div class="callout">CTR keystream must never repeat for one key. The nonce is <code>0x01 || seq(4) || 0^7</code>; sequence is unique per direction within a session.</div>
+
+<h2>6. Identity: BSSID lock plus key confirmation</h2>
+<p>SSID alone is ambiguous. The STA now joins only the enrolled AP BSSID using <code>cyw43_wifi_join(..., bssid, channel)</code>, then verifies the connected BSSID at runtime with <code>cyw43_wifi_get_bssid()</code>. A mismatch increments <code>bssid</code>, logs <code>BSSID MISMATCH</code>, and disconnects. Only after Layer-2 identity succeeds does app-layer key confirmation prove the peer knows the PSK.</p>
+
+<h2>7. What we deliberately do not claim</h2>
+<ul>
+<li>No MAC-layer SFO or raw-frame injection (CYW43439 cannot do it).</li>
+<li>No "covert" or "audited" language before hardware acceptance.</li>
+<li>No forward secrecy, no secure element, no protection against physical flash access.</li>
+<li>The AEAD slot is reserved, not implemented — the suite is Speck CTR+CMAC today.</li>
+</ul>
+
+<h2>8. Retrieval practice</h2>
+<div class="quiz" tabindex="0">
+<p><strong>Q1.</strong> A bad CMAC tag causes:</p>
+<p>A. DROP BEFORE DECRYPT<br>B. DECRYPT THEN WARN</p>
+<p class="answer">A — verify before decrypt; no plaintext surfaces and session state is untouched.</p>
+</div>
+<div class="quiz" tabindex="0">
+<p><strong>Q2.</strong> Directional keys are derived by:</p>
+<p>A. SENDER RELATIVE LABELS<br>B. ROLE BASED LABELS</p>
+<p class="answer">B — AP→STA (0x01) and STA→AP (0x02) must match across both boards.</p>
+</div>
+<div class="quiz" tabindex="0">
+<p><strong>Q3.</strong> BSSID lock protects against:</p>
+<p>A. DUPLICATE SSID HOTSPOTS<br>B. PHYSICAL FLASH THEFT</p>
+<p class="answer">A — it binds Layer 2 identity; flash theft still reveals the PSK.</p>
+</div>
+<p class="small">Hover/focus to reveal answers. Next: [[reference/security-layer.md]] and ADR 0001/0004. Ask me follow-ups before writing the datasheet.</p>
+</body>
+</html>
