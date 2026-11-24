@@ -34,6 +34,7 @@ add_library(phantom_proto STATIC
     "${PROTO_DIR}/proto_zeroize.c"
     "${PROTO_DIR}/proto_aead.c"
     "${PROTO_DIR}/proto_ratchet.c"
+    "${PROTO_DIR}/proto_hdr.c"
 )
 target_include_directories(phantom_proto PUBLIC "${PROTO_DIR}")
 target_compile_options(phantom_proto PRIVATE ${WARNINGS})
@@ -122,3 +123,8 @@ add_executable(test_ratchet tests/test_ratchet.c)
 target_link_libraries(test_ratchet PRIVATE phantom_proto)
 target_compile_options(test_ratchet PRIVATE ${WARNINGS})
 add_test(NAME ratchet COMMAND test_ratchet)
+
+add_executable(test_hdr tests/test_hdr.c)
+target_link_libraries(test_hdr PRIVATE phantom_proto)
+target_compile_options(test_hdr PRIVATE ${WARNINGS})
+add_test(NAME hdr COMMAND test_hdr)
