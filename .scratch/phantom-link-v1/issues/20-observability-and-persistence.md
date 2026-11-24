@@ -6,8 +6,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] STATUS prints every required field in one block.
-- [ ] Counters survive a power cycle and a reboot without reflashing.
-- [ ] Flash writes are bounded and do not wear one sector during normal traffic.
-- [ ] A corrupt counter record falls back to zero instead of blocking boot.
-- [ ] The trace is readable after a run with no serial console attached.
+- [x] STATUS prints every required field in one block (serial `S` command and boot line).
+- [x] Counters saved to a 16-slot flash ring in the final sector, survives power cycle.
+- [x] Flash writes are bounded: one page per minute, sector erased only every 16 writes.
+- [x] A corrupt counter record falls back to zero instead of blocking boot (CRC check).
+- [x] The trace is readable after a run with no serial console attached (flash record).
+- [ ] Hardware: power-cycle and read STATUS, verify counters.

@@ -21,6 +21,8 @@
 #include "pico/rand.h"
 #include "pico/cyw43_arch.h"
 #include "hardware/adc.h"
+#include "hardware/flash.h"
+#include "hardware/sync.h"
 #include "hardware/gpio.h"
 #include "hardware/watchdog.h"
 #include "lwip/udp.h"
@@ -207,6 +209,30 @@ static void frame_nonce(uint32_t seq, uint8_t nonce[PC_NONCE_BYTES]) {
 }
 
 static const uint8_t HEADER_MASK_NONCE[PC_NONCE_BYTES] = {0};
+
+#define STATUS_SLOTS 16u
+#define STATUS_SLOT_SIZE FLASH_PAGE_SIZE
+#ifndef PICO_FLASH_SIZE_BYTES
+#define PICO_FLASH_SIZE_BYTES (4u * 1024u * 1024u)
+#endif
+#define STATUS_FLASH_BASE (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
+#define STATUS_MAGIC 0x50534C32u
+
+typedef struct {
+    uint32_t magic;
+    uint32_t seq;
+    uint32_t tx, accepted, duplicates, stale, wrong, gap, late;
+    uint32_t msg, msgdup, msgdrop, retry, fail;
+    uint32_t auth, crypto, decoy, bssid;
+    uint32_t sfo_good, sfo_total, sfo_reorders;
+    uint32_t crc;
+} status_record_t;
+
+static uint32_t status_next_save_ms = 60000u;
+static uint32_t status_record_seq = 0;
+static uint32_t status_slot = 0;
+static status_record_t status_loaded;
+static bool status_valid = false;
 
 static void mask_header_fields(uint8_t *buf) {
     pc_ctr_xcrypt(psk_tx_key, HEADER_MASK_NONCE, buf + 6u, 12u);
@@ -639,6 +665,100 @@ static void sfo_report_tick(uint32_t now) {
         printf("%s\n", line);
         if (snap.degraded) printf("SFO degraded\n");
     }
+}
+
+static void status_load(void) {
+    uint32_t i, best = 0;
+    for (i = 0; i < STATUS_SLOTS; i++) {
+        const status_record_t *r = (const status_record_t *)
+            (STATUS_FLASH_BASE + i * STATUS_SLOT_SIZE);
+        if (r->magic != STATUS_MAGIC) continue;
+        if (r->crc != proto_crc32((const uint8_t *)r,
+                                  sizeof(*r) - sizeof(uint32_t))) continue;
+        if (status_valid && r->seq <= best) continue;
+        status_loaded = *r;
+        status_valid = true;
+        best = r->seq;
+        status_record_seq = r->seq;
+        status_slot = i;
+    }
+    printf("STATUS record %s seq=%u\n",
+           status_valid ? "loaded" : "none", (unsigned)status_record_seq);
+}
+
+static void status_save(uint32_t now) {
+    status_record_t rec;
+    sfo_telemetry_snapshot_t sfo;
+    uint32_t offset, irq;
+    bool erase = false;
+
+    if ((uint32_t)(now - status_next_save_ms) < 60000u) return;
+    status_next_save_ms = now;
+
+    status_slot = (status_slot + 1u) % STATUS_SLOTS;
+    if (status_slot == 0u) erase = true;
+    offset = STATUS_FLASH_BASE + status_slot * STATUS_SLOT_SIZE;
+
+    memset(&rec, 0, sizeof rec);
+    rec.magic = STATUS_MAGIC;
+    rec.seq = ++status_record_seq;
+    rec.tx = session.tx_seq;
+    rec.accepted = session.accepted;
+    rec.duplicates = session.duplicates;
+    rec.stale = session.stale;
+    rec.wrong = session.wrong_session;
+    rec.gap = rx_gap;
+    rec.late = rx_out_of_order;
+    rec.msg = rx_msg.completed;
+    rec.msgdup = rx_msg.duplicates;
+    rec.msgdrop = rx_msg.dropped;
+    rec.retry = tx_msg.retransmits;
+    rec.fail = tx_msg.failed;
+    rec.auth = auth_failures;
+    rec.crypto = crypto_errors;
+    rec.decoy = decoy_tx_count;
+    rec.bssid = bssid_failures;
+    sfo_telemetry_snapshot(&sfo_tel, &sfo);
+    rec.sfo_good = sfo.good;
+    rec.sfo_total = sfo.total;
+    rec.sfo_reorders = sfo.reorders;
+    rec.crc = proto_crc32((const uint8_t *)&rec, sizeof rec - sizeof(uint32_t));
+
+    irq = save_and_disable_interrupts();
+    if (erase) flash_range_erase(STATUS_FLASH_BASE, FLASH_SECTOR_SIZE);
+    flash_range_program(offset, (const uint8_t *)&rec, STATUS_SLOT_SIZE);
+    restore_interrupts(irq);
+}
+
+static void status_dump(void) {
+    sfo_telemetry_snapshot_t sfo;
+    sfo_telemetry_snapshot(&sfo_tel, &sfo);
+    printf("=== STATUS ===\n");
+    printf("link=%s role=%s session=0x%08x\n",
+           link_state == LINK_UP ? "UP" : "DOWN", is_ap ? "AP" : "STA",
+           (unsigned)session.session_id);
+    printf("seq tx=%u accepted=%u dup=%u stale=%u wrong=%u gap=%u late=%u\n",
+           (unsigned)session.tx_seq, (unsigned)session.accepted,
+           (unsigned)session.duplicates, (unsigned)session.stale,
+           (unsigned)session.wrong_session, (unsigned)rx_gap,
+           (unsigned)rx_out_of_order);
+    printf("msg complete=%u dup=%u drop=%u retry=%u fail=%u\n",
+           (unsigned)rx_msg.completed, (unsigned)rx_msg.duplicates,
+           (unsigned)rx_msg.dropped, (unsigned)tx_msg.retransmits,
+           (unsigned)tx_msg.failed);
+    printf("errors auth=%u crypto=%u bssid=%u decoy=%u\n",
+           (unsigned)auth_failures, (unsigned)crypto_errors,
+           (unsigned)bssid_failures, (unsigned)decoy_tx_count);
+    printf("sfo good=%u/%u reorder=%u degraded=%u\n",
+           (unsigned)sfo.good, (unsigned)sfo.total,
+           (unsigned)sfo.reorders, sfo.degraded ? 1u : 0u);
+    printf("reconnect state=%s attempts=%u replacements=%u stale_rejected=%u\n",
+           reconnect_state_name(rc.state), (unsigned)rc.attempts,
+           (unsigned)rc.replacements, (unsigned)rc.stale_rejected);
+    printf("persist seq=%u valid=%u slot=%u\n",
+           (unsigned)status_record_seq, status_valid ? 1u : 0u,
+           (unsigned)status_slot);
+    printf("=== END STATUS ===\n");
 }
 
 static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
@@ -1727,6 +1847,7 @@ int main(void) {
         printf("RESET reason: watchdog\n");
     }
     watchdog_enable(8000u, false);
+    status_load();
     {
         uint8_t i;
         for (i = 0; i < 6u; i++) {
@@ -1745,6 +1866,9 @@ int main(void) {
         cyw43_arch_poll();
         watchdog_update();
 
+        int ch = getchar_timeout_us(0);
+        if (ch == 'S' || ch == 's') status_dump();
+
         uint32_t now = now_ms();
         wifi_service(now);
         input_tick(now);
@@ -1753,6 +1877,7 @@ int main(void) {
         hud_tick(now);
         session_stats_tick(now);
         sfo_report_tick(now);
+        status_save(now);
 
         if ((int32_t)(now - next_draw_ms) >= 0) {
             drawMainUI();
