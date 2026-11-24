@@ -6,8 +6,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] A forced infinite loop resets in under 8 s.
-- [ ] After reset the board re-links and resumes sending.
-- [ ] The reset reason is logged on the next boot.
-- [ ] Normal operation never trips the watchdog during a 1 h run.
+- [x] Hardware watchdog enabled at boot with 8 s timeout; main loop feeds it each tick.
+- [x] Reset reason logged as `RESET reason: watchdog` on watchdog reboot.
+- [x] Compile-time `PHANTOM_WATCHDOG_TEST` build forces a hang 5 s after LINK UP.
+- [ ] Hardware: forced hang resets in under 8 s and re-links.
+- [ ] Hardware: normal operation never trips during a 1 h run (covered by ticket 21 soak).
 - [ ] Long blocking work is split or fed to the watchdog explicitly.

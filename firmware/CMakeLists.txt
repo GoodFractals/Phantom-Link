@@ -48,3 +48,9 @@ endfunction()
 
 add_phantom_target(phantom_link_ap 1)
 add_phantom_target(phantom_link_sta 0)
+
+option(PHANTOM_WATCHDOG_TEST "Build forced-hang watchdog test firmware" OFF)
+if(PHANTOM_WATCHDOG_TEST)
+    target_compile_definitions(phantom_link_ap PRIVATE PHANTOM_WATCHDOG_TEST=1)
+    target_compile_definitions(phantom_link_sta PRIVATE PHANTOM_WATCHDOG_TEST=1)
+endif()

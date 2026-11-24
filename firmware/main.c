@@ -83,6 +83,10 @@ static const bool is_ap = (IS_AP != 0);
 #define DECOY_JITTER_MS 300u
 #define SFO_BURST_MS 1000u
 #define SFO_CRC_CONTEXT 0xA5u
+#ifdef PHANTOM_WATCHDOG_TEST
+#define WATCHDOG_TEST_TRIGGER_MS 5000u
+static uint32_t watchdog_test_start = 0;
+#endif
 #define LINK_TIMEOUT_MS 3000
 #define SYMBOL_INTERVAL_MS 80
 #define ACK_TIMEOUT_MS 1200
@@ -599,6 +603,18 @@ static void handle_sfo_frame(const proto_frame_view_t *frame) {
 static void sfo_report_tick(uint32_t now) {
     sfo_telemetry_snapshot_t snap;
     char line[96];
+
+#ifdef PHANTOM_WATCHDOG_TEST
+    if (watchdog_test_start == 0u && link_state == LINK_UP) {
+        watchdog_test_start = now;
+        printf("WATCHDOG TEST armed\n");
+    }
+    if (watchdog_test_start != 0u &&
+        (uint32_t)(now - watchdog_test_start) >= WATCHDOG_TEST_TRIGGER_MS) {
+        printf("WATCHDOG TEST forcing hang\n");
+        while (true) { tight_loop_contents(); }
+    }
+#endif
 
     if ((uint32_t)(now - next_sfo_report_ms) >= 30000u) {
         next_sfo_report_ms = now + 30000u;
@@ -1689,6 +1705,10 @@ int main(void) {
     psk_derive_keys();
     sfo_telemetry_init(&sfo_tel);
     reconnect_init(&rc);
+    if (watchdog_enable_caused_reboot()) {
+        printf("RESET reason: watchdog\n");
+    }
+    watchdog_enable(8000u, false);
     {
         uint8_t i;
         for (i = 0; i < 6u; i++) {
@@ -1705,6 +1725,7 @@ int main(void) {
 
     while (true) {
         cyw43_arch_poll();
+        watchdog_update();
 
         uint32_t now = now_ms();
         wifi_service(now);
