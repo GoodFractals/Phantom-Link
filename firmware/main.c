@@ -44,6 +44,9 @@
 #include "proto/proto_psk.h"
 #include "proto/proto_lpi.h"
 
+#include "proto/proto_sfo.h"
+#include "proto/proto_sfo_telemetry.h"
+
 #ifndef IS_AP
 #define IS_AP 1
 #endif
@@ -75,6 +78,8 @@ static const bool is_ap = (IS_AP != 0);
 #define HEARTBEAT_MS 1000
 #define DECOY_BASE_MS 700u
 #define DECOY_JITTER_MS 300u
+#define SFO_BURST_MS 1000u
+#define SFO_CRC_CONTEXT 0xA5u
 #define LINK_TIMEOUT_MS 3000
 #define SYMBOL_INTERVAL_MS 80
 #define ACK_TIMEOUT_MS 1200
@@ -152,6 +157,18 @@ static uint32_t crypto_errors = 0;
 static uint32_t decoy_tx_count = 0;
 static uint32_t last_decoy_ms = 0;
 static uint32_t next_decoy_ms = DECOY_BASE_MS;
+
+static sfo_telemetry_t sfo_tel;
+static uint32_t next_sfo_ms = SFO_BURST_MS;
+static uint8_t sfo_nibble = 0;
+static uint8_t sfo_repeat = 0;
+static uint8_t sfo_perm_pos = 0;
+static uint8_t sfo_order[4] = {0};
+static uint8_t sfo_crc[4] = {0};
+static uint8_t sfo_arrival = 0;
+static uint8_t sfo_nibbles[SFO_REPEATS] = {0};
+static uint8_t sfo_nibble_count = 0;
+static uint32_t next_sfo_report_ms = 30000u;
 
 static void frame_nonce(uint32_t seq, uint8_t nonce[PC_NONCE_BYTES]) {
     nonce[0] = 0x01u; /* outbound direction */
@@ -497,6 +514,76 @@ static void request_teardown(const char *reason) {
     set_link_down("BYE");
 }
 
+static void sfo_send_burst_step(void) {
+    uint8_t perm[SFO_BURST_SIZE];
+    uint8_t payload[2];
+
+    sfo_nibble_to_perm(sfo_nibble, perm);
+    payload[0] = perm[sfo_perm_pos];
+    payload[1] = sfo_crc8(SFO_CRC_CONTEXT, sfo_nibble);
+    if (peer_valid) {
+        send_frame_to(&peer_ip, peer_port, PROTO_TYPE_SFO, 0,
+                      payload, sizeof payload, 0);
+    } else if (!is_ap) {
+        send_frame_to(&ap_addr, UDP_PORT, PROTO_TYPE_SFO, 0,
+                      payload, sizeof payload, 0);
+    }
+
+    sfo_perm_pos++;
+    if (sfo_perm_pos >= SFO_BURST_SIZE) {
+        sfo_perm_pos = 0;
+        sfo_repeat++;
+        if (sfo_repeat >= SFO_REPEATS) {
+            sfo_repeat = 0;
+            sfo_nibble = (uint8_t)((sfo_nibble + 1u) & 0x0Fu);
+        }
+    }
+}
+
+static void handle_sfo_frame(const proto_frame_view_t *frame) {
+    uint8_t nibble = 0;
+    uint8_t decoded = 0;
+
+    if (frame->payload_len != 2u || !frame->payload) return;
+    if (sfo_arrival >= SFO_BURST_SIZE) sfo_arrival = 0;
+    sfo_order[sfo_arrival] = frame->payload[0];
+    sfo_crc[sfo_arrival] = frame->payload[1];
+    sfo_arrival++;
+
+    if (sfo_arrival < SFO_BURST_SIZE) return;
+    sfo_arrival = 0;
+
+    if (!sfo_perm_to_nibble(sfo_order, &decoded) ||
+        sfo_crc[0] != sfo_crc8(SFO_CRC_CONTEXT, decoded)) {
+        sfo_telemetry_record_failure(&sfo_tel);
+        return;
+    }
+    if (sfo_nibble_count < SFO_REPEATS) {
+        sfo_nibbles[sfo_nibble_count++] = decoded;
+    }
+    if (sfo_nibble_count < SFO_REPEATS) return;
+
+    if (sfo_majority(sfo_nibbles, &nibble)) {
+        sfo_telemetry_record_success(&sfo_tel, nibble);
+    } else {
+        sfo_telemetry_record_failure(&sfo_tel);
+    }
+    sfo_nibble_count = 0;
+}
+
+static void sfo_report_tick(uint32_t now) {
+    sfo_telemetry_snapshot_t snap;
+    char line[96];
+
+    if ((uint32_t)(now - next_sfo_report_ms) >= 30000u) {
+        next_sfo_report_ms = now + 30000u;
+        sfo_telemetry_snapshot(&sfo_tel, &snap);
+        sfo_telemetry_format(&snap, line, sizeof line);
+        printf("%s\n", line);
+        if (snap.degraded) printf("SFO degraded\n");
+    }
+}
+
 static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
                          u16_t port) {
     note_peer(addr, port);
@@ -618,6 +705,12 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
         }
         break;
     }
+
+    case PROTO_TYPE_SFO:
+#ifndef SFO_DISABLED
+        handle_sfo_frame(frame);
+#endif
+        break;
 
     case PROTO_TYPE_DATA: {
         if (link_state != LINK_UP) break;
@@ -1439,6 +1532,12 @@ static void net_tick(uint32_t now) {
                                         get_rand_32);
         if (send_control_frame(PROTO_TYPE_PING)) decoy_tx_count++;
     }
+#ifndef SFO_DISABLED
+    if ((uint32_t)(now - next_sfo_ms) >= SFO_BURST_MS) {
+        next_sfo_ms = now;
+        sfo_send_burst_step();
+    }
+#endif
 }
 
 // --- Wi-Fi and UDP bring-up ---------------------------------------------------
@@ -1544,6 +1643,7 @@ int main(void) {
 
     if (!proto_crypto_self_test()) halt_error("CRYPTO FAIL");
     psk_derive_keys();
+    sfo_telemetry_init(&sfo_tel);
 
     if (!wifi_init()) halt_error("WIFI FAIL");
     if (!udp_link_init()) halt_error("UDP FAIL");
@@ -1562,6 +1662,7 @@ int main(void) {
         tx_tick(now);
         hud_tick(now);
         session_stats_tick(now);
+        sfo_report_tick(now);
 
         if ((int32_t)(now - next_draw_ms) >= 0) {
             drawMainUI();
