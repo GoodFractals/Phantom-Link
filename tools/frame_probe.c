@@ -2,6 +2,8 @@
  * Modes:
  *   replay <session_hex> <seq>        stale PING, valid CRC, rejected by window
  *   tamper <session_hex> <seq>        DATA with valid CMAC then one bit flipped
+ *   capture <session_hex> <seq> [msg] valid encrypted DATA with known plaintext
+ *                                    for the ticket-14 pktmon capture evidence
  */
 
 #include <stdio.h>
@@ -30,6 +32,13 @@ static void derive_sta_to_ap(uint8_t key[16]) {
     memcpy(key, derived, 16u);
 }
 
+/* Deterministic padding so the evidence frame is reproducible. */
+static uint32_t capture_rng(void) {
+    static uint32_t state = 0xA5A5A5A5u;
+    state = state * 1664525u + 1013904223u;
+    return state;
+}
+
 static void print_hex(const uint8_t *buf, size_t len) {
     size_t i;
     for (i = 0; i < len; i++) printf("%02X", buf[i]);
@@ -44,7 +53,9 @@ int main(int argc, char **argv) {
     uint8_t nonce[PC_NONCE_BYTES];
 
     if (argc < 4) {
-        fprintf(stderr, "usage: %s replay|tamper <session_hex> <seq>\n", argv[0]);
+        fprintf(stderr,
+                "usage: %s replay|tamper|capture <session_hex> <seq> [message]\n",
+                argv[0]);
         return 2;
     }
     session = (uint32_t)strtoul(argv[2], NULL, 16);
@@ -83,6 +94,27 @@ int main(int argc, char **argv) {
                                      buf + PROTO_HEADER_LEN + LPI_WIRE_PAYLOAD);
         buf[PROTO_HEADER_LEN] ^= 0x80u; /* single-bit ciphertext tamper */
         print_hex(buf, len);
+        return 0;
+    }
+
+    if (strcmp(argv[1], "capture") == 0) {
+        const char *msg = argc > 4 ? argv[4] : "LINK ALIVE NO TEXT!!!";
+        size_t msg_len = strlen(msg);
+
+        view.type = PROTO_TYPE_DATA;
+        view.flags = PROTO_FLAG_ENCRYPTED;
+        view.payload_len = LPI_WIRE_PAYLOAD;
+        view.payload = padded;
+        lpi_pad((const uint8_t *)msg, msg_len, padded, capture_rng);
+        if (proto_frame_encode(buf, sizeof buf, &view, &len) != PROTO_OK) return 5;
+        pc_ctr_xcrypt(key, ZERO_NONCE, buf + 6u, 12u);
+        frame_nonce(seq, nonce);
+        pc_suite_speck_ctr_cmac.seal(key, nonce, buf, PROTO_HEADER_LEN,
+                                     buf + PROTO_HEADER_LEN, LPI_WIRE_PAYLOAD,
+                                     buf + PROTO_HEADER_LEN + LPI_WIRE_PAYLOAD);
+        printf("FRAME: ");
+        print_hex(buf, len);
+        printf("PLAINTEXT: %s\n", msg);
         return 0;
     }
 

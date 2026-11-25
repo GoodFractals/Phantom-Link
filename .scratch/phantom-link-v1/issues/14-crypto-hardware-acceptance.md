@@ -11,9 +11,15 @@
 - [x] T15 replay: `RX stale type=PING seq=0 ... stale=7`, zero accepted.
 - [x] T16 tamper: `CRYPTO FAIL: bad tag (90 bytes)` via firmware-side probe.
 - [x] T17 wrong PSK: `AUTH FAILED: HELLO bad tag`, no LINK UP.
-- [ ] A packet capture contains no readable message text (no sniffer available).
+- [ ] A packet capture contains no readable message text. Path-1 pktmon capture
+      passes (2026-11-24, see evidence file); true 802.11 no-PSK capture still
+      pending an ESP32 sniffer.
 - [ ] Both serial logs are archived with the build hashes.
-- [ ] `poc/plaintext-v1` still builds and flashes from the tagged tree.
+- [x] `poc/plaintext-v1` builds from the tagged tree (2026-11-24, WSL
+      `arm-none-eabi-gcc`, `PICO_BOARD=pico2_w`). TX UF2
+      `d6523318b3808c4d6c4ac5dbb98371d47810bd51f46094085254a9553f7768ac`,
+      RX UF2 `ef7eed2fbd3fc9ec7abd8bb0f5e273ee80c7207dabaae2b1b4026932c4314665`.
+      Flashing that tag is not currently needed; boards are on 6333ab72.
 
 ## Verification
 
