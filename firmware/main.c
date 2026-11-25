@@ -19,9 +19,11 @@
 #include "pico/stdlib.h"
 #include "pico/time.h"
 #include "pico/rand.h"
+#include "pico/bootrom.h"
 #include "pico/cyw43_arch.h"
 #include "hardware/adc.h"
 #include "hardware/flash.h"
+#include "hardware/regs/addressmap.h"
 #include "hardware/sync.h"
 #include "hardware/gpio.h"
 #include "hardware/watchdog.h"
@@ -264,7 +266,13 @@ typedef struct {
     uint32_t crc;
 } status_record_t;
 
+#ifdef PHANTOM_STATUS_SAVE
+#ifdef PHANTOM_BRINGUP_TRACE
+static uint32_t status_next_save_ms = 8000u;
+#else
 static uint32_t status_next_save_ms = 60000u;
+#endif
+#endif
 static uint32_t status_record_seq = 0;
 static uint32_t status_slot = 0;
 static status_record_t status_loaded;
@@ -688,13 +696,13 @@ static void sfo_report_tick(uint32_t now) {
         printf("WATCHDOG TEST armed\n");
     }
     if (watchdog_test_start != 0u &&
-        (uint32_t)(now - watchdog_test_start) >= WATCHDOG_TEST_TRIGGER_MS) {
+        (int32_t)(now - watchdog_test_start) >= (int32_t)WATCHDOG_TEST_TRIGGER_MS) {
         printf("WATCHDOG TEST forcing hang\n");
         while (true) { tight_loop_contents(); }
     }
 #endif
 
-    if ((uint32_t)(now - next_sfo_report_ms) >= 30000u) {
+    if ((int32_t)(now - next_sfo_report_ms) >= 0) {
         next_sfo_report_ms = now + 30000u;
         sfo_telemetry_snapshot(&sfo_tel, &snap);
         sfo_telemetry_format(&snap, line, sizeof line);
@@ -706,8 +714,12 @@ static void sfo_report_tick(uint32_t now) {
 static void status_load(void) {
     uint32_t i, best = 0;
     for (i = 0; i < STATUS_SLOTS; i++) {
+        // STATUS_FLASH_BASE is a flash *offset*. A raw cast lands at
+        // 0x003FF000, which is unmapped on RP2350 and hard-faults. Read
+        // through the XIP window instead; flash_range_* below correctly take
+        // the offset form.
         const status_record_t *r = (const status_record_t *)
-            (STATUS_FLASH_BASE + i * STATUS_SLOT_SIZE);
+            (XIP_BASE + STATUS_FLASH_BASE + i * STATUS_SLOT_SIZE);
         if (r->magic != STATUS_MAGIC) continue;
         if (r->crc != proto_crc32((const uint8_t *)r,
                                   sizeof(*r) - sizeof(uint32_t))) continue;
@@ -723,12 +735,29 @@ static void status_load(void) {
 }
 
 static void status_save(uint32_t now) {
+#ifndef PHANTOM_STATUS_SAVE
+    (void)now;
+    // Flash writes are off by default pending the RP2350 flash/CYW43
+    // quiescing fix (ticket 20). Reading persisted records still works.
+    return;
+#else
     status_record_t rec;
     sfo_telemetry_snapshot_t sfo;
     uint32_t offset, irq;
     bool erase = false;
 
-    if ((uint32_t)(now - status_next_save_ms) < 60000u) return;
+#ifdef PHANTOM_BRINGUP_TRACE
+    {
+        static uint32_t last_check = 0;
+        if ((int32_t)(now - last_check) >= 1000) {
+            last_check = now;
+            printf("SSAVE-CHECK now=%u next=%u\n", (unsigned)now,
+                   (unsigned)status_next_save_ms);
+        }
+    }
+#endif
+
+    if ((int32_t)(now - status_next_save_ms) < 0) return;
     status_next_save_ms = now;
 
     status_slot = (status_slot + 1u) % STATUS_SLOTS;
@@ -759,11 +788,33 @@ static void status_save(uint32_t now) {
     rec.sfo_total = sfo.total;
     rec.sfo_reorders = sfo.reorders;
     rec.crc = proto_crc32((const uint8_t *)&rec, sizeof rec - sizeof(uint32_t));
+#ifdef PHANTOM_BRINGUP_TRACE
+    printf("SSAVE crc done=%08x\n", (unsigned)rec.crc);
+#endif
 
+#ifdef PHANTOM_BRINGUP_TRACE
+    printf("SSAVE enter slot=%u off=%06x erase=%d seq=%u base=%06x\n",
+           (unsigned)status_slot, (unsigned)offset, (int)erase,
+           (unsigned)rec.seq, (unsigned)STATUS_FLASH_BASE);
+#endif
+    uint32_t t0 = 0;
+#ifdef PHANTOM_BRINGUP_TRACE
+    t0 = time_us_32();
+#endif
+    // The CYW43 driver shares the RP2350 QSPI bus with XIP flash. Quiesce
+    // the async context before erasing/programming so the ROM flash routine
+    // cannot collide with an in-flight CYW43 SPI transfer.
+#ifdef PHANTOM_BRINGUP_TRACE
+    printf("SSAVE pre-quiesce\n");
+#endif
     irq = save_and_disable_interrupts();
     if (erase) flash_range_erase(STATUS_FLASH_BASE, FLASH_SECTOR_SIZE);
     flash_range_program(offset, (const uint8_t *)&rec, STATUS_SLOT_SIZE);
     restore_interrupts(irq);
+#ifdef PHANTOM_BRINGUP_TRACE
+    printf("SSAVE post-quiesce\n");
+#endif
+#endif /* PHANTOM_STATUS_SAVE */
 }
 
 static void status_dump(void) {
@@ -884,7 +935,7 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
 
     case PROTO_TYPE_PONG:
         if (manual_ping) {
-            printf("RTT: %u ms\n", (unsigned)(now_ms() - manual_ping_ms));
+            printf("RTT: %u ms\n", (unsigned)(int32_t)(now_ms() - manual_ping_ms));
             manual_ping = false;
         }
         if (link_state != LINK_UP) set_link_up("PONG");
@@ -1540,7 +1591,7 @@ static bool button_pressed(Button *b, uint32_t now) {
         b->changed_ms = now;
     }
 
-    if ((uint32_t)(now - b->changed_ms) >= BUTTON_DEBOUNCE_MS &&
+    if ((int32_t)(now - b->changed_ms) >= (int32_t)BUTTON_DEBOUNCE_MS &&
         b->stable != b->raw) {
         b->stable = b->raw;
         return b->stable; // fire once on the press edge
@@ -1571,7 +1622,7 @@ static void input_tick(uint32_t now) {
     bool direction_changed = (dr != last_joy_dr || dc != last_joy_dc);
     if (dr != 0 || dc != 0) {
         if (direction_changed ||
-            (uint32_t)(now - last_move_ms) >= JOY_REPEAT_MS) {
+            (int32_t)(now - last_move_ms) >= (int32_t)JOY_REPEAT_MS) {
             move_cursor(dr, dc);
             last_move_ms = now;
         }
@@ -1602,7 +1653,7 @@ static void input_tick(uint32_t now) {
     if (teardown_hold) {
         if (teardown_hold_start == 0) teardown_hold_start = now;
         if (!teardown_triggered &&
-            (uint32_t)(now - teardown_hold_start) >= 2500) {
+            (int32_t)(now - teardown_hold_start) >= 2500) {
             teardown_triggered = true;
             request_teardown("user");
         }
@@ -1701,7 +1752,7 @@ static void wifi_service(uint32_t now) {
 
     bool transient = (st == CYW43_LINK_JOIN || st == CYW43_LINK_NOIP);
     if (!transient &&
-        (uint32_t)(now - last_wifi_retry_ms) >= WIFI_RETRY_MS) {
+        (int32_t)(now - last_wifi_retry_ms) >= (int32_t)WIFI_RETRY_MS) {
         last_wifi_retry_ms = now;
         printf("Wi-Fi reconnect attempt\n");
         wifi_join_sta();
@@ -1721,7 +1772,7 @@ static void net_tick(uint32_t now) {
         if (!is_ap) {
             // peer from the received HELLO.
             if (wifi_ready &&
-                (uint32_t)(now - last_hello_ms) >= HELLO_INTERVAL_MS) {
+                (int32_t)(now - last_hello_ms) >= (int32_t)HELLO_INTERVAL_MS) {
                 last_hello_ms = now;
                 begin_handshake();
                 send_control_frame(PROTO_TYPE_HELLO);
@@ -1736,17 +1787,17 @@ static void net_tick(uint32_t now) {
                (unsigned)up.epoch, reconnect_state_name(up.state));
     }
 
-    if ((uint32_t)(now - last_heard_ms) >= LINK_TIMEOUT_MS) {
+    if ((int32_t)(now - last_heard_ms) >= (int32_t)LINK_TIMEOUT_MS) {
         set_link_down("timeout");
         return;
     }
 
-    if (manual_ping && (uint32_t)(now - manual_ping_ms) >= LINK_TIMEOUT_MS) {
+    if (manual_ping && (int32_t)(now - manual_ping_ms) >= (int32_t)LINK_TIMEOUT_MS) {
         manual_ping = false;
         printf("RTT timeout\n");
     }
 
-    if ((uint32_t)(now - last_ping_ms) >= HEARTBEAT_MS) {
+    if ((int32_t)(now - last_ping_ms) >= (int32_t)HEARTBEAT_MS) {
         last_ping_ms = now;
         send_control_frame(PROTO_TYPE_PING);
     }
@@ -1754,19 +1805,31 @@ static void net_tick(uint32_t now) {
     /* Constant-rate-ish decoy chatter while no user message is in flight.
      * Control frames only: never DATA, so message assembly and msgdrop stay
      * untouched. Jitter is bounded and the next delay is chosen up front. */
-    if (!tx_active() && (uint32_t)(now - last_decoy_ms) >= next_decoy_ms) {
+    if (!tx_active() && (int32_t)(now - last_decoy_ms) >= (int32_t)next_decoy_ms) {
         last_decoy_ms = now;
         next_decoy_ms = lpi_decoy_delay(DECOY_BASE_MS, DECOY_JITTER_MS,
                                         get_rand_32);
         if (send_control_frame(PROTO_TYPE_PING)) decoy_tx_count++;
     }
 #ifndef SFO_DISABLED
-    if ((uint32_t)(now - next_sfo_ms) >= SFO_BURST_MS) {
+    if ((int32_t)(now - next_sfo_ms) >= (int32_t)SFO_BURST_MS) {
         next_sfo_ms = now;
         sfo_send_burst_step();
     }
 #endif
 }
+
+// --- Bring-up trace (diagnostic build only) ----------------------------------
+#ifdef PHANTOM_BRINGUP_TRACE
+static void trace_checkpoint(const char *label) {
+    printf("TRACE %s\n", label);
+    oled_clear();
+    oled_draw_custom_string(0, 0, label);
+    oled_show();
+}
+#else
+#define trace_checkpoint(label) ((void)0)
+#endif
 
 // --- Wi-Fi and UDP bring-up ---------------------------------------------------
 static bool wifi_init(void) {
@@ -1774,11 +1837,13 @@ static bool wifi_init(void) {
         printf("CYW43 init failed\n");
         return false;
     }
+    trace_checkpoint("T4");
 
     if (is_ap) {
         uint8_t own[6];
         cyw43_arch_enable_ap_mode(WIFI_SSID, WIFI_PASSWORD,
                                   CYW43_AUTH_WPA2_AES_PSK);
+        trace_checkpoint("T5");
         wifi_ready = true;
         printf("AP active: 192.168.4.1\n");
         if (cyw43_wifi_get_mac(&cyw43_state, CYW43_ITF_AP, own) == 0) {
@@ -1786,6 +1851,7 @@ static bool wifi_init(void) {
         }
     } else {
         cyw43_arch_enable_sta_mode();
+        trace_checkpoint("T5");
 
         // Keep the radio awake; power save adds latency and dropped packets.
         cyw43_wifi_pm(&cyw43_state, CYW43_PERFORMANCE_PM);
@@ -1798,6 +1864,7 @@ static bool wifi_init(void) {
 
         last_wifi_retry_ms = now_ms();
         int err = wifi_join_sta();
+        trace_checkpoint("T6");
         if (err) printf("wifi_join failed: %d\n", err);
         printf("STA join continues in the main loop\n");
     }
@@ -1850,6 +1917,27 @@ static void session_stats_tick(uint32_t now) {
            (unsigned)tx_msg.failed, (unsigned)auth_failures, (unsigned)crypto_errors, (unsigned)decoy_tx_count, (unsigned)bssid_failures);
 }
 
+// Tooling hook: two 'B' characters within 1 s on the CDC port reboot into
+// BOOTSEL. This lets tools/flash_pico.ps1 flash without a physical button;
+// picotool's --ser filter only matches BOOTSEL devices and cannot target an
+// app-mode board when both Picos are connected.
+static void bootsel_command(uint32_t now) {
+    static uint32_t armed_ms = 0;
+    if (armed_ms != 0u && (uint32_t)(now - armed_ms) < 1000u) {
+        reset_usb_boot(0, 0);
+    }
+    armed_ms = now;
+}
+
+#ifdef PHANTOM_BRINGUP_TRACE
+static uint32_t stage_debug_iter = 0;
+#define LOOP_DONE(s) do { if (stage_debug_iter < 3u) printf("STAGE %s\n", (s)); } while(0)
+#define LOOP_ITER() (stage_debug_iter++)
+#else
+#define LOOP_DONE(s) ((void)0)
+#define LOOP_ITER() ((void)0)
+#endif
+
 int main(void) {
     stdio_init_all();
     sleep_ms(1500); // give the USB CDC monitor time to attach
@@ -1870,15 +1958,21 @@ int main(void) {
     proto_msg_rx_init(&rx_msg, GLYPHS, (uint8_t)(sizeof(GLYPHS) - 1));
     proto_msg_tx_init(&tx_msg, GLYPHS, (uint8_t)(sizeof(GLYPHS) - 1));
     drawMainUI();
+    trace_checkpoint("T0");
 
     IP_ADDR4(&ap_addr, 192, 168, 4, 1);
 
     if (!proto_crypto_self_test()) halt_error("CRYPTO FAIL");
+    trace_checkpoint("T1");
     psk_derive_keys();
+    trace_checkpoint("T1a");
     zeroize_tracker_init(&zeroizer);
     register_key_secrets();
+    trace_checkpoint("T1b");
     sfo_telemetry_init(&sfo_tel);
+    trace_checkpoint("T1c");
     reconnect_init(&rc);
+    trace_checkpoint("T1d");
     if (watchdog_enable_caused_reboot()) {
         printf("RESET reason: watchdog\n");
     }
@@ -1887,8 +1981,8 @@ int main(void) {
     active_suite = &pc_suite_aead_adapter;
     printf("SUITE ChaCha20-Poly1305\n");
 #endif
-    watchdog_enable(8000u, false);
     status_load();
+    trace_checkpoint("T2");
     {
         uint8_t i;
         for (i = 0; i < 6u; i++) {
@@ -1896,35 +1990,77 @@ int main(void) {
         }
     }
 
+    trace_checkpoint("T3");
     if (!wifi_init()) halt_error("WIFI FAIL");
+    trace_checkpoint("T7");
     if (!udp_link_init()) halt_error("UDP FAIL");
+    trace_checkpoint("T8");
+
+    // Arm only after CYW43/UDP bring-up. Enabling before wifi_init() made a
+    // slow first association trip the 8 s watchdog and boot-loop the pair.
+#ifdef PHANTOM_BRINGUP_TRACE
+    // Diagnostic: watchdog off entirely so we can observe a full boot cycle
+    // without resets masking the real behavior.
+#else
+#ifdef PHANTOM_WATCHDOG_TEST
+    watchdog_enable(30000u, false);
+#else
+    watchdog_enable(8000u, false);
+#endif
+#endif
 
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
 
     uint32_t next_draw_ms = 0;
 
     while (true) {
+        uint32_t now = now_ms();
+        LOOP_ITER();
+
+        LOOP_DONE("poll");
         cyw43_arch_poll();
         watchdog_update();
 
         int ch = getchar_timeout_us(0);
+        LOOP_DONE("char");
         if (ch == 'S' || ch == 's') status_dump();
+        if (ch == 'B' || ch == 'b') bootsel_command(now);
 
-        uint32_t now = now_ms();
+        LOOP_DONE("wifi");
         wifi_service(now);
+        LOOP_DONE("input");
         input_tick(now);
+        LOOP_DONE("net");
         net_tick(now);
+        LOOP_DONE("tx");
         tx_tick(now);
+        LOOP_DONE("hud");
         hud_tick(now);
+        LOOP_DONE("stats");
         session_stats_tick(now);
+        LOOP_DONE("sfo");
         sfo_report_tick(now);
+        LOOP_DONE("status");
+        watchdog_update();
         status_save(now);
+        watchdog_update();
+        LOOP_DONE("poststatus");
 
         if ((int32_t)(now - next_draw_ms) >= 0) {
+            LOOP_DONE("draw");
             drawMainUI();
+#ifdef PHANTOM_BRINGUP_TRACE
+            {
+                char tb[16];
+                snprintf(tb, sizeof tb, "L%lu", (unsigned long)(now / 1000u));
+                oled_draw_custom_string(0, 0, tb);
+                oled_show();
+            }
+#endif
             next_draw_ms = now + 50;
         }
 
+        LOOP_DONE("sleep");
         sleep_ms(5);
     }
 }

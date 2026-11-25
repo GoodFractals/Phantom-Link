@@ -82,7 +82,6 @@ $banner = "phantom-link v1 $buildId $($entry.role)"
 
 $pt = Get-ChildItem (Join-Path $env:USERPROFILE '.pico-sdk\picotool') -Filter picotool.exe -Recurse -ErrorAction SilentlyContinue |
     Sort-Object FullName | Select-Object -Last 1
-if ($mode -eq 'app' -and -not $pt) { Fail 'NO_PICOTOOL' 'picotool not found under ~/.pico-sdk/picotool' }
 
 $stale = $false
 foreach ($src in @('firmware\main.c', 'firmware\oled.h')) {
@@ -110,17 +109,78 @@ if (-not $match) { Fail 'SERIAL_MISMATCH' "Serial $serial is not the enrolled se
 if (-not $Flash) { Write-Output 'STATUS=ready'; exit 0 }
 
 if ($mode -eq 'app') {
-    # Options must precede the positional filename in this picotool build.
-    & $pt.FullName load --ser $serial -f -v -x $uf2Path 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { Fail 'FLASH_FAILED' 'picotool load failed' }
-} else {
-    Copy-Item -LiteralPath $uf2Path -Destination (Join-Path $drive 'firmware.uf2') -Force
-    $deadline = (Get-Date).AddSeconds(25)
-    while ((Get-Date) -lt $deadline -and (Test-Path (Join-Path $drive 'INFO_UF2.TXT'))) {
+    # Ask the running app to reboot into BOOTSEL over CDC. picotool's --ser
+    # filter only matches devices already in BOOTSEL, so it cannot target an
+    # app-mode board by serial when both Picos are connected.
+    $com = [string]$entry.com
+    if (-not $com) { Fail 'NO_COM' "No com port enrolled for $Board" }
+    $sp = $null
+    $opened = $false
+    $deadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $sp = [System.IO.Ports.SerialPort]::new($com, 115200)
+            $sp.DtrEnable = $true
+            $sp.ReadTimeout = 200
+            $sp.Open()
+            $opened = $true
+            break
+        } catch {
+            if ($sp) { try { $sp.Dispose() } catch { } }
+            $sp = $null
+            Start-Sleep -Milliseconds 400
+        }
+    }
+    if (-not $opened) { Fail 'CDC_BOOTSEL_FAILED' "Could not open $com on $Board" }
+    try {
+        Start-Sleep -Milliseconds 150
+        $sp.Write('BB')
+        Start-Sleep -Milliseconds 150
+        $sp.Close()
+    } catch {
+        if ($sp) { try { $sp.Dispose() } catch { } }
+        Fail 'CDC_BOOTSEL_FAILED' "Could not send BOOTSEL command on $com : $($_.Exception.Message)"
+    }
+    $deadline = (Get-Date).AddSeconds(10)
+    $bootVol = $null
+    while ((Get-Date) -lt $deadline) {
+        $bootVol = Get-CimInstance Win32_Volume -ErrorAction SilentlyContinue |
+            Where-Object { $_.Label -eq 'RP2350' -and $_.DriveLetter } |
+            Select-Object -First 1
+        if ($bootVol) { break }
         Start-Sleep -Milliseconds 250
     }
-    if (Test-Path (Join-Path $drive 'INFO_UF2.TXT')) { Fail 'NO_REBOOT' 'BOOTSEL volume stayed mounted' }
+    if (-not $bootVol) { Fail 'NO_BOOTSEL' "$Board did not enter BOOTSEL after CDC command" }
+    $drive = $bootVol.DriveLetter
+} else {
+    $drive = $bootVol.DriveLetter
 }
+if (-not (Test-Path (Join-Path $drive 'INFO_UF2.TXT'))) {
+    Fail 'WRONG_BOOTLOADER' "$drive is not an RP2350 bootloader"
+}
+
+if ($mode -eq 'app') {
+    # Re-identify the BOOTSEL drive by its USB serial to be certain it is the
+    # board we asked for before writing anything.
+    $disk = Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue |
+        Where-Object { $_.InterfaceType -eq 'USB' -and $_.Model -match 'RP2350' } |
+        Where-Object { (($_.PNPDeviceID -split '&')[-2]) -eq $serial } |
+        Select-Object -First 1
+    if (-not $disk) { Fail 'BOOTSEL_SERIAL_MISMATCH' "BOOTSEL drive $drive is not $serial" }
+}
+Copy-Item -LiteralPath $uf2Path -Destination (Join-Path $drive 'firmware.uf2') -Force
+# Re-query each iteration: the BOOTSEL volume disappears as soon as the flash
+# copy completes, so a cached drive letter would throw DriveNotFoundException.
+$deadline = (Get-Date).AddSeconds(25)
+while ((Get-Date) -lt $deadline) {
+    $still = Get-CimInstance Win32_Volume -ErrorAction SilentlyContinue |
+        Where-Object { $_.Label -eq 'RP2350' -and $_.DriveLetter -eq $drive }
+    if (-not $still) { break }
+    Start-Sleep -Milliseconds 250
+}
+$still = Get-CimInstance Win32_Volume -ErrorAction SilentlyContinue |
+    Where-Object { $_.Label -eq 'RP2350' -and $_.DriveLetter -eq $drive }
+if ($still) { Fail 'NO_REBOOT' 'BOOTSEL volume stayed mounted' }
 Write-Output 'FLASHED=True'
 
 # Wait for the same serial to reappear in app mode.

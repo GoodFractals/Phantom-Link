@@ -1,6 +1,7 @@
 # Build trees (root, firmware/, and any nested target)
 build/
 firmware/build/
+firmware/build-*/
 
 # Archived hardware artifacts, never commit UF2s
 artifacts/

@@ -195,7 +195,11 @@ def main() -> int:
     assert "WIFI_TIMEOUT_MS" not in main_text
     assert "cyw43_arch_enable_ap_mode" in main_text
     assert "cyw43_arch_enable_sta_mode" in main_text
-    assert "cyw43_arch_wifi_connect_async" in main_text
+    # Ticket 39 replaced the async connect helper with a BSSID-targeted join
+    # plus runtime verification (the async helper could not express identity).
+    assert "cyw43_wifi_join(" in main_text
+    assert "cyw43_wifi_get_bssid" in main_text
+    assert "BSSID MISMATCH" in main_text
     assert "if (is_ap)" in main_text and "if (!is_ap)" in main_text
     assert "#define BTN_BACK   12" in main_text
     assert "button_init(&btn_back, BTN_BACK);" in main_text
@@ -212,7 +216,7 @@ def main() -> int:
     print("link: HELLO_ACK gated, RTT timeout present, both CMake targets defined")
     print("session: hardware RNG IDs, replay window, gap guard, stats line")
     print("reliable: ACK, whole-message retransmit, lost-ACK recovery, bounded retries")
-    print("wifi: STA static IP on the AP subnet; DHCP stopped")
+    print("wifi: STA static IP on AP subnet; DHCP stopped; BSSID bound and verified")
 
     print("HOST VALIDATION: PASS")
     return 0
