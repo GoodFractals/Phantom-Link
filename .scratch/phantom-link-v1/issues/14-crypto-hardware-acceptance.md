@@ -4,7 +4,7 @@
 
 **Blocked by:** 13
 
-**Status:** ready-for-human
+**Status:** blocked-on-hardware (T2–T12 baseline passes on 3b666adb; true no-PSK RF capture pending ESP32; serial log archive pending)
 
 - [ ] T2–T12 pass on both boards (plaintext pass on e4fadca7; encrypted link
       re-verified on 6333ab72 via PING/PONG and SFO, full matrix not rerun).

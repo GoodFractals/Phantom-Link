@@ -4,7 +4,7 @@
 
 **Blocked by:** 18, 19
 
-**Status:** ready-for-agent
+**Status:** blocked-on-hardware (flash persistence write hangs on RP2350 with CYW43 active; writes disabled by default, see note below)
 
 - [x] STATUS prints every required field in one block (serial `S` command and boot line).
 - [ ] Counters saved to a 16-slot flash ring in the final sector, survives power cycle.

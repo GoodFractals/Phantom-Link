@@ -4,7 +4,7 @@
 
 **Blocked by:** 14
 
-**Status:** ready-for-agent
+**Status:** blocked-on-hardware (code committed in 0373663; forced-hang and 1 h soak not yet run on hardware)
 
 - [x] Hardware watchdog armed **after** CYW43/UDP bring-up with 8 s timeout;
       main loop feeds it each tick. Arming before bring-up made slow init trip
