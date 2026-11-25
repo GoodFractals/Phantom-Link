@@ -4,17 +4,21 @@
 
 **Blocked by:** 13
 
-**Status:** blocked-on-hardware (T2–T12 baseline passes on 3b666adb; true no-PSK RF capture pending ESP32; serial log archive pending)
+**Status:** closed (hardware verified 2026-11-25: baseline + no-PSK RF capture + archived logs)
 
-- [ ] T2–T12 pass on both boards (plaintext pass on e4fadca7; encrypted link
-      re-verified on 6333ab72 via PING/PONG and SFO, full matrix not rerun).
+- [x] T2–T12 pass on both boards. Production `3b666adb`: LINK UP on both,
+      joystick/UI live, 70 s shared session with 407 accepted frames,
+      zero duplicates/stale/wrong/retry/crypto errors, SFO 6/6. Log archive:
+      `logs/capture14/serial_20261125_3b666adb.md`.
 - [x] T15 replay: `RX stale type=PING seq=0 ... stale=7`, zero accepted.
 - [x] T16 tamper: `CRYPTO FAIL: bad tag (90 bytes)` via firmware-side probe.
 - [x] T17 wrong PSK: `AUTH FAILED: HELLO bad tag`, no LINK UP.
-- [ ] A packet capture contains no readable message text. Path-1 pktmon capture
-      passes (2026-11-24, see evidence file); true 802.11 no-PSK capture still
-      pending an ESP32 sniffer.
-- [ ] Both serial logs are archived with the build hashes.
+- [x] A packet capture contains no readable message text. Path-1 pktmon capture
+      passes (2026-11-24). True 802.11 no-PSK RF capture passes (2026-11-25):
+      ESP32 promiscuous, 73 DATA frames from AP BSSID, zero plaintext hits.
+      See `logs/capture14/capture14_20261125_rf_evidence.md`.
+- [x] Both serial logs are archived with the build hashes `3b666adb`
+      (`logs/capture14/serial_20261125_3b666adb.md`).
 - [x] `poc/plaintext-v1` builds from the tagged tree (2026-11-24, WSL
       `arm-none-eabi-gcc`, `PICO_BOARD=pico2_w`). TX UF2
       `d6523318b3808c4d6c4ac5dbb98371d47810bd51f46094085254a9553f7768ac`,
