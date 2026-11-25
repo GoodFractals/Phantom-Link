@@ -2,6 +2,12 @@
 
 ## Knowledge
 
+- [Lesson 002: The Moats of Phantom Link](lessons/0002-the-moats.html)
+  Every defence layer outside-in, what each proves and does not prove, the
+  one-line PSK override, and the honest forward-secrecy boundary. Use for:
+  explaining the architecture to a technical non-RF reader.
+- [Ticket 14 RF evidence](../../../logs/capture14/capture14_20261125_rf_evidence.md)
+  ESP32 no-PSK capture: 73 DATA frames from the AP BSSID, zero plaintext hits.
 - [Paper: StegoFrameOrder—MAC Layer Covert Network Channel for Wireless IEEE 802.11 Networks (Sawicki et al., 2021)](https://pmc.ncbi.nlm.nih.gov/articles/PMC8471875/)
   Primary source for true SFO: covert data is carried by the order of MAC-layer
   frames using non-deterministic MAC behavior. Use for: what real SFO requires.

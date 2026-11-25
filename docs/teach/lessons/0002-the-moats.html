@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 002 &mdash; The Moats of Phantom Link</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<p class="small">Phantom Link teaching workspace &mdash; Lesson 002 &mdash; [[MISSION.md]]</p>
+<h1>The Moats: what protects the Bonnie &amp; Clyde link</h1>
+<p class="small">Read time: 12 minutes. One win: you can explain every layer of defence, outside in, and say exactly what each one does &mdash; and does not &mdash; prove.</p>
+
+<div class="callout"><strong>Rule of the house:</strong> a claim without a test is marketing. Every moat below has a ticket, and the ones marked &ldquo;planned&rdquo; are not claims yet. Say what a proof does <em>not</em> cover; that is what separates documentation from advertising.</div>
+
+<h2>0. The map is not a stack</h2>
+<p>Picture a castle. Most moats are rings an attacker must cross <em>on the way in</em>. But one thing &mdash; getting the source code or a configured board's firmware image &mdash; is not an inner ring at all. It is the <strong>road to the castle</strong>: a different axis.</p>
+<p>That distinction matters. If someone has your source, they get the <em>defaults</em>, not your key (you changed it in one line). If someone has your <em>built UF2</em>, they have your key, because it is compiled in as literal bytes. Forward secrecy does not close that road; it just makes a key stolen on that road useless for <em>old</em> traffic.</p>
+<p class="small">Evidence: <code>firmware/proto/proto_netcfg.h</code>, <code>tools/gen_psk.ps1</code>, <code>tools/provision_pair.ps1</code>. Residual risk: ticket 38. Fix for old traffic: ticket 31.</p>
+
+<h2>1. The air path, outside &rarr; inside</h2>
+
+<h3>Moat 1 &mdash; Camouflage SSID <span class="small">(done, cosmetic)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> the network is named <code>TMOBILE-1219</code>, not <code>SECRET-MESSAGE-NETWORK</code>.</li>
+  <li><strong>Significance:</strong> buys a few seconds of not being interesting to a casual scanner. Protects nothing cryptographically.</li>
+</ul>
+
+<h3>Moat 2 &mdash; WPA2, the first real moat <span class="small">(done)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> Wi-Fi password <code>12345678</code>, WPA2-AES. Stops strangers associating and reading frames.</li>
+  <li><strong>Significance:</strong> the <em>outer</em> cryptographic layer. Weak password, deliberately &mdash; message security does not live here.</li>
+  <li><strong>Boundary:</strong> <code>pktmon</code> capture proved that even <em>after</em> this layer is decrypted, our payload is still ciphertext. That is the defence-in-depth claim, not a WPA2 strength claim.</li>
+</ul>
+
+<h3>Moat 3 &mdash; BSSID identity binding <span class="small">(done, hardware verified &mdash; ticket 39)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> the STA is locked to AP BSSID <code>88:a2:9e:5b:ff:69</code>, checked at runtime with <code>cyw43_wifi_get_bssid</code>.</li>
+  <li><strong>Significance:</strong> cloning the SSID + password is not enough. The impostor has the wrong hardware address and the STA leaves.</li>
+</ul>
+
+<h3>Moat 4 &mdash; App PSK + KDF <span class="small">(done, hardware verified &mdash; tickets 10&ndash;14)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> a 32-byte key, <code>pc_kdf</code> with salt <code>BONNIE-CLYDE-v1</code>, deriving separate directional keys.</li>
+  <li><strong>Significance:</strong> this is the moat that made the pktmon capture unreadable, and the moat the ESP32 proved against a no-PSK observer.</li>
+  <li><strong>Boundary:</strong> static &mdash; one leaked PSK breaks all <em>history</em>. That is exactly why moat 7 exists.</li>
+</ul>
+
+<h3>Moat 5 &mdash; Key confirmation handshake <span class="small">(done &mdash; tickets 11, 17)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> HELLO / HELLO_ACK carry a confirmation tag.</li>
+  <li><strong>Significance:</strong> wrong key &rArr; <code>AUTH FAILED: HELLO bad tag</code>, no LINK UP. An attacker without the key cannot complete the handshake.</li>
+</ul>
+
+<h3>Moat 6 &mdash; Per-frame encryption + replay window <span class="small">(done &mdash; tickets 12, 13)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> Speck CTR + CMAC on every frame; a replay window rejects stale and duplicate sequence numbers.</li>
+  <li><strong>Significance:</strong> tampering is detected (<code>CRYPTO FAIL: bad tag</code>) and recorded frames cannot be replayed to trick the receiver. T15/T16 passed on hardware.</li>
+</ul>
+
+<h3>Moat 7 &mdash; Forward secrecy <span class="small">(host green, device integration pending &mdash; ticket 31)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> ephemeral ECDH per session; traffic keys are never stored.</li>
+  <li><strong>Significance:</strong> a leaked static PSK can no longer decrypt <em>recorded</em> sessions. This is the moat that fixes the biggest hole in moat 4.</li>
+  <li><strong>Boundary:</strong> it does <em>not</em> stop live impersonation by someone holding the PSK &mdash; they can participate in the exchange as a legitimate peer.</li>
+</ul>
+
+<h3>Moat 8 &mdash; Per-message ratchet <span class="small">(host green, integration pending &mdash; ticket 33)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> traffic keys evolve per message within a session.</li>
+  <li><strong>Significance:</strong> compromising one message key does not unroll the whole session. Limits blast radius <em>forward in time</em>.</li>
+</ul>
+
+<h3>Moat 9 &mdash; Encrypted header <span class="small">(host green, integration pending &mdash; ticket 34)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> session id, sequence number and ACK bits are encrypted, not merely masked.</li>
+  <li><strong>Significance:</strong> reduces metadata leakage. Even the framing becomes opaque to a passive observer.</li>
+</ul>
+
+<h3>Moat 10 &mdash; AEAD suite <span class="small">(code builds, hardware verification pending &mdash; ticket 32)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> opt-in ChaCha20-Poly1305 via <code>-DPHANTOM_USE_AEAD=1</code>.</li>
+  <li><strong>Significance:</strong> a modern, standard authenticated-encryption option alongside Speck for the PoC.</li>
+</ul>
+
+<h3>Moat 11 &mdash; Device zeroization <span class="small">(host green, wiring/verification pending &mdash; ticket 36)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> wipe derived keys on BYE or a 2.5 s two-button chord.</li>
+  <li><strong>Significance:</strong> innermost crypto moat &mdash; protects secrets already <em>inside</em> the castle after an orderly teardown.</li>
+</ul>
+
+<h3>Moat 12 &mdash; LPI / decoy chatter <span class="small">(app layer done; detection report pending &mdash; ticket 29)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> constant-rate-ish PING decoys with bounded jitter; SFO as application-layer telemetry.</li>
+  <li><strong>Significance:</strong> makes traffic less patterned. <strong>Explicitly not a covert claim</strong> &mdash; the CYW43 MAC/PHY is untouched.</li>
+</ul>
+
+<h3>Moat 13 &mdash; Hardware hardening <span class="small">(research only &mdash; ticket 35)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> RP2350 OTP secure boot and debug-port disable, proven on a <em>spare</em> board only.</li>
+  <li><strong>Significance:</strong> raises the cost of firmware replacement. Does <em>not</em> stop flash readout of a key &mdash; do not oversell it.</li>
+</ul>
+
+<h3>Moat 14 &mdash; Independent review <span class="small">(not started &mdash; ticket 37)</span></h3>
+<ul>
+  <li><strong>What it is:</strong> an external person reviews the design.</li>
+  <li><strong>Significance:</strong> not a technical moat &mdash; it is the <em>inspection</em> that tells you the other moats are real.</li>
+</ul>
+
+<h2>2. The sentence to put in docs</h2>
+<div class="callout">
+<strong>Outer moats (already dug):</strong> camouflage &rarr; WPA2 &rarr; BSSID lock &rarr; app PSK/KDF &rarr; key confirmation &rarr; replay window.<br>
+<strong>Inner moats (being dug now):</strong> forward secrecy &rarr; per-message ratchet &rarr; encrypted header &rarr; AEAD &rarr; zeroization &rarr; LPI decoys.<br>
+<strong>Inspection (planned):</strong> hardware hardening on a spare board + independent review.<br>
+<strong>Honest boundary:</strong> a leaked PSK still permits <em>live</em> impersonation; forward secrecy only removes the <em>recorded-history</em> damage.
+</div>
+
+<h2>3. The one-line override &mdash; why open source is fine</h2>
+<p>A person who clones the repo and changes the PSK, SSID/password and enrolled BSSID in <code>firmware/proto/netcfg_local.h</code> / <code>proto_netcfg.h</code> before flashing two fresh Picos has a <strong>private link we cannot read</strong>. The published values are defaults, not secrets. That is the intended distribution model &mdash; and it works today, <em>independent of forward secrecy</em>.</p>
+<p>The repo being public therefore does not hand an attacker <em>your</em> key. It hands them the demo key. The one-line override is what moves the secret out of the repository and into the hands of the person flashing the boards.</p>
+<div class="callout"><strong>Correct framing:</strong> open source + one-line override &rArr; private against remote attackers. Physical/binary access to <em>your specific configured board</em> still exposes the key &mdash; that is the residual risk in ticket 38, and the reason moat 7 is worth building.</div>
+
+<h2>4. Test yourself</h2>
+<div class="quiz"><strong>Does the ESP32 capture prove WPA2 is strong?</strong><br>
+<span class="answer">No. It proves a passive observer with no credentials sees ciphertext at RF. It says nothing about WPA2 strength &mdash; in fact the pktmon capture assumes WPA2 was already decrypted and the app payload was <em>still</em> unreadable.</span></div>
+<div class="quiz"><strong>Does forward secrecy make the shared PSK unnecessary?</strong><br>
+<span class="answer">No. It is still the bootstrap. It only means a leaked PSK cannot decrypt <em>old</em> traffic. Live impersonation with the PSK remains possible until per-device identities are added (not in 31&ndash;39).</span></div>
+<div class="quiz"><strong>Why is moat 0 on a different axis?</strong><br>
+<span class="answer">Because it is the road to the castle, not a ring inside it. An attacker with your built UF2 skips every RF moat and goes straight to the compiled key. Forward secrecy limits the damage to new sessions, not old ones.</span></div>
+<div class="quiz"><strong>What does moat 13 actually protect against?</strong><br>
+<span class="answer">Firmware replacement and debug access &mdash; not key extraction from flash. Never claim it stops physical readout.</span></div>
+
+<h2>5. Sources in this repo</h2>
+<ul>
+  <li>Ticket 14 evidence: <code>logs/capture14/capture14_20261125_rf_evidence.md</code> &mdash; 73 DATA frames, zero plaintext hits.</li>
+  <li>Baseline log: <code>logs/capture14/serial_20261125_3b666adb.md</code> &mdash; 70 s, 407 accepted, clean counters.</li>
+  <li>Threat model: ticket 38; forward secrecy: ticket 31; provisioning: ticket 39.</li>
+  <li>Config knobs: <code>firmware/proto/proto_netcfg.h</code>, <code>tools/gen_psk.ps1</code>, <code>tools/provision_pair.ps1</code>.</li>
+</ul>
+<p class="small">Lesson 001 covers why our SFO is telemetry, not true MAC-layer SFO. [[RESOURCES.md]]</p>
+</body>
+</html>
