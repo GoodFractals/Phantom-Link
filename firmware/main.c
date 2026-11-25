@@ -552,6 +552,10 @@ static void set_link_up(const char *why) {
     last_hello_ms = now;
     ui_active = true;
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+#ifdef PHANTOM_WATCHDOG_TEST
+    // Arm only now that the link is up - association can exceed 8 s.
+    watchdog_enable(8000u, false);
+#endif
 
     if (peer_valid) {
         printf("LINK UP (%s) peer=%s:%u\n", why, ipaddr_ntoa(&peer_ip),
@@ -2003,7 +2007,10 @@ int main(void) {
     // without resets masking the real behavior.
 #else
 #ifdef PHANTOM_WATCHDOG_TEST
-    watchdog_enable(30000u, false);
+    // Arm at LINK UP (not at boot) in the test build: Wi-Fi association can
+    // exceed 8 s, which would reset the board before the loop feeds it.
+    // Production arms here because it has no forced hang; the test build
+    // defers arming until set_link_up().
 #else
     watchdog_enable(8000u, false);
 #endif
