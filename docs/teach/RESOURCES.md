@@ -2,6 +2,11 @@
 
 ## Knowledge
 
+- [Lesson 003: The Claims Ledger](lessons/0003-the-claims-ledger.html)
+  All 39 tickets in one print-friendly page: what each proves (PROVEN), what a
+  reader might infer (DERIVED), and the line that must not be crossed. Use for:
+  writing datasheet copy, interview answers, or release notes without
+  overclaiming.
 - [Lesson 002: The Moats of Phantom Link](lessons/0002-the-moats.html)
   Every defence layer outside-in, what each proves and does not prove, the
   one-line PSK override, and the honest forward-secrecy boundary. Use for:
