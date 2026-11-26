@@ -184,6 +184,12 @@ static bool ecdh_ready = false;
 static ratchet_t tx_ratchet;
 static ratchet_t rx_ratchet;
 static bool ratchets_ready = false;
+/* ECDH derivation is deferred from the lwIP callback (deep stack) to the main
+ * loop: mbedTLS Curve25519 uses several KB of stack and overflowed the 8 KB
+ * stack when called from handle_frame. */
+static bool ecdh_derive_pending = false;
+static uint8_t pending_peer_pub[X25519_KEY_BYTES];
+static const char *pending_link_reason = NULL;
 static uint32_t auth_failures = 0;
 static proto_session_t session;  /* used by derive_session_keys above */
 static uint32_t crypto_errors = 0;
@@ -346,10 +352,24 @@ static bool derive_session_keys(const uint8_t peer_pub[X25519_KEY_BYTES]) {
     if (!x25519_shared_secret(&ecdh_ctx, peer_pub, shared)) return false;
     {
         static const uint8_t master_psk[FS_KEY_BYTES] = PHANTOM_PSK_BYTES;
+        uint8_t ap_to_sta[FS_KEY_BYTES], sta_to_ap[FS_KEY_BYTES];
         fs_derive_keys(master_psk, shared, session.session_id,
                        (const uint8_t *)"BONNIE-CLYDE-v1",
                        sizeof("BONNIE-CLYDE-v1") - 1u,
-                       sess_tx_key, sess_rx_key);
+                       ap_to_sta, sta_to_ap);
+        /* Role-based, not "my send / my receive": both boards must use the
+         * same key for a given direction. The STA swaps, mirroring
+         * psk_derive_keys(). Getting this wrong makes DATA frames undecryptable
+         * while PING/PONG still work (they are CRC-only), hiding the bug. */
+        if (is_ap) {
+            memcpy(sess_tx_key, ap_to_sta, FS_KEY_BYTES);
+            memcpy(sess_rx_key, sta_to_ap, FS_KEY_BYTES);
+        } else {
+            memcpy(sess_tx_key, sta_to_ap, FS_KEY_BYTES);
+            memcpy(sess_rx_key, ap_to_sta, FS_KEY_BYTES);
+        }
+        memset(ap_to_sta, 0, sizeof ap_to_sta);
+        memset(sta_to_ap, 0, sizeof sta_to_ap);
     }
     memset(shared, 0, sizeof shared);
     sess_keys_ready = true;
@@ -1025,27 +1045,20 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
 
     switch (frame->type) {
     case PROTO_TYPE_HELLO:
-        /* Derive ephemeral keys from the peer's public key before replying;
-         * our HELLO_ACK carries our public key so the peer can derive too. */
-        if (sess_keys_ready) { sess_keys_ready = false; }
-        if (!derive_session_keys(peer_pub)) {
-            printf("ECDH derive failed on HELLO\n");
-            break;
-        }
-        if (send_control_frame(PROTO_TYPE_HELLO_ACK)) {
-            set_link_up("HELLO");
-        } else {
+        /* Reply immediately (HELLO_ACK is CRC-only), then derive keys in the
+         * main loop where there is enough stack for mbedTLS Curve25519. */
+        memcpy(pending_peer_pub, peer_pub, X25519_KEY_BYTES);
+        pending_link_reason = "HELLO";
+        ecdh_derive_pending = true;
+        if (!send_control_frame(PROTO_TYPE_HELLO_ACK)) {
             printf("HELLO_ACK send failed; link stays down\n");
         }
         break;
 
     case PROTO_TYPE_HELLO_ACK:
-        if (sess_keys_ready) { sess_keys_ready = false; }
-        if (!derive_session_keys(peer_pub)) {
-            printf("ECDH derive failed on HELLO_ACK\n");
-            break;
-        }
-        set_link_up("HELLO_ACK");
+        memcpy(pending_peer_pub, peer_pub, X25519_KEY_BYTES);
+        pending_link_reason = "HELLO_ACK";
+        ecdh_derive_pending = true;
         break;
 
     case PROTO_TYPE_PING: {
@@ -2171,6 +2184,20 @@ int main(void) {
         LOOP_DONE("poll");
         cyw43_arch_poll();
         watchdog_update();
+
+        /* Complete deferred ECDH here on the shallow main-loop stack. */
+        if (ecdh_derive_pending) {
+            ecdh_derive_pending = false;
+            sess_keys_ready = false;
+            if (derive_session_keys(pending_peer_pub)) {
+                set_link_up(pending_link_reason ? pending_link_reason : "ECDH");
+            } else {
+                printf("ECDH derive failed (deferred)\n");
+            }
+            memset(pending_peer_pub, 0, sizeof pending_peer_pub);
+            pending_link_reason = NULL;
+            watchdog_update();
+        }
 
         int ch = getchar_timeout_us(0);
         LOOP_DONE("char");

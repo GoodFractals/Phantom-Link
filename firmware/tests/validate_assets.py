@@ -152,7 +152,9 @@ def main() -> int:
     assert "group_index = 13" not in main_text
     print("numeric UI: SOS [2][1], SPACE [3][1], LINK [3][2] indicator")
 
-    assert "if (send_control_frame(PROTO_TYPE_HELLO_ACK))" in main_text
+    # HELLO_ACK send is now unconditional in the deferred-ECDH path; the
+    # failure case logs, while success is decided by the deferred derivation.
+    assert "send_control_frame(PROTO_TYPE_HELLO_ACK)" in main_text
     assert "proto_frame_check_crc" in main_text
     assert "send_data_frame" in main_text
     # send_data_frame returns bool; assigning it to err_t made every
