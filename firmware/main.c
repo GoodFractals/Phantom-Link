@@ -54,6 +54,8 @@
 #include "proto/proto_reconnect.h"
 #include "proto/proto_zeroize.h"
 #include "proto/proto_aead.h"
+#include "proto/proto_fs.h"
+#include "proto/proto_x25519.h"
 
 #define WIFI_SSID PHANTOM_WIFI_SSID
 #define WIFI_PASSWORD PHANTOM_WIFI_PASSWORD
@@ -1998,6 +2000,8 @@ int main(void) {
     IP_ADDR4(&ap_addr, 192, 168, 4, 1);
 
     if (!proto_crypto_self_test()) halt_error("CRYPTO FAIL");
+    if (!x25519_selftest()) halt_error("ECDH FAIL");
+    printf("ECDH selftest PASS\n");
     trace_checkpoint("T1");
     psk_derive_keys();
     trace_checkpoint("T1a");

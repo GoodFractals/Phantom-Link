@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.13)
 include(pico_sdk_import.cmake)
 
 project(phantom_link C CXX ASM)
+set(PICO_MBEDTLS_CONFIG_FILE "phantom_mbedtls_config.h" CACHE STRING "Phantom Link mbedTLS config")
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -19,7 +20,7 @@ string(SUBSTRING "${PHANTOM_SOURCE_HASH}" 0 8 PHANTOM_BUILD_HASH)
 pico_sdk_init()
 
 function(add_phantom_target target_name is_ap)
-    add_executable(${target_name} main.c proto/proto_frame.c proto/proto_session.c proto/proto_msg.c proto/proto_txq.c proto/proto_crypto.c proto/proto_lpi.c proto/proto_sfo.c proto/proto_sfo_telemetry.c proto/proto_reconnect.c proto/proto_zeroize.c proto/proto_aead.c)
+    add_executable(${target_name} main.c proto/proto_frame.c proto/proto_session.c proto/proto_msg.c proto/proto_txq.c proto/proto_crypto.c proto/proto_lpi.c proto/proto_sfo.c proto/proto_sfo_telemetry.c proto/proto_reconnect.c proto/proto_zeroize.c proto/proto_aead.c proto/proto_fs.c proto/proto_x25519.c)
 
     target_compile_definitions(${target_name} PRIVATE
         IS_AP=${is_ap}
@@ -31,12 +32,17 @@ function(add_phantom_target target_name is_ap)
     target_include_directories(${target_name} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
         ${CMAKE_CURRENT_LIST_DIR}/proto
+        ${PICO_SDK_PATH}/lib/mbedtls/include
+        ${PICO_SDK_PATH}/lib/mbedtls/include/mbedtls
+        ${CMAKE_CURRENT_LIST_DIR}/proto
     )
 
     target_link_libraries(${target_name}
         pico_stdlib
         pico_rand
         pico_cyw43_arch_lwip_poll
+        pico_mbedtls_crypto
+        pico_mbedtls_headers
         hardware_spi
         hardware_adc
     )
