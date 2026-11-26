@@ -343,8 +343,8 @@
 </div>
 <div class="ticket">
 <p class="tline"><b>37 &middot; Independent review</b> <span class="badge todo">OPEN</span></p>
-<p><span class="lbl">Proven</span> Reviewer pack + machine pass; no human findings yet.</p>
-<p><span class="lbl derived">Inferred</span> Honest wording: machine-audited.</p>
+<p><span class="lbl">Proven</span> Reviewer pack + published machine findings; two high issues fixed and re-verified.</p>
+<p><span class="lbl derived">Inferred</span> Honest wording: machine-audited, human review pending.</p>
 <p><span class="lbl">Boundary</span> Never say “reviewed” yet.</p>
 </div>
 
@@ -371,6 +371,8 @@
   <strong>"MAC-layer SFO / covert channel."</strong> Our SFO is application-layer telemetry; the CYW43 MAC/PHY is untouched (15, 16, 29; Lesson 001).<br>
   <strong>"Independently reviewed / audited."</strong> Ticket 37 is open.<br>
   <strong>"Military-grade" / "NIST-approved crypto."</strong> Speck128 is a lightweight cipher chosen for this MCU, validated against published vectors.<br>
+  <strong>"128-bit authentication" / "AES-encrypted header."</strong> The tag is 8 bytes (`2^-64`); the header is CTR-masked with session-derived keys, not AES-encrypted or separately tagged on the wire.<br>
+  <strong>"The full ECDH public key is MAC-bound."</strong> Only its first 8 bytes are the confirm nonce; the rest is implicitly authenticated by the DATA tag (ticket 37 findings).<br>
   <strong>"Secure boot, encrypted boot, debug lock enabled."</strong> Ticket 35 is research only; OTP is untouched.<br>
   <strong>"Covert, undetectable traffic."</strong> Ticket 29 reduces trivial fingerprints; tickets 17 and 22 (sniffer report and airtime cost) are open.
 </div>

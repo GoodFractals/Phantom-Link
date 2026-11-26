@@ -46,7 +46,7 @@
   <li><strong>Boundary:</strong> static &mdash; one leaked PSK breaks all <em>history</em>. That is exactly why moat 7 exists.</li>
 </ul>
 
-<h3>Moat 5 &mdash; Key confirmation handshake <span class="small">(done &mdash; tickets 11, 17)</span></h3>
+<h3>Moat 5 &mdash; Key confirmation handshake <span class="small">(done &mdash; tickets 11, 31)</span></h3>
 <ul>
   <li><strong>What it is:</strong> HELLO / HELLO_ACK carry a confirmation tag.</li>
   <li><strong>Significance:</strong> wrong key &rArr; <code>AUTH FAILED: HELLO bad tag</code>, no LINK UP. An attacker without the key cannot complete the handshake.</li>
@@ -58,32 +58,32 @@
   <li><strong>Significance:</strong> tampering is detected (<code>CRYPTO FAIL: bad tag</code>) and recorded frames cannot be replayed to trick the receiver. T15/T16 passed on hardware.</li>
 </ul>
 
-<h3>Moat 7 &mdash; Forward secrecy <span class="small">(host green, device integration pending &mdash; ticket 31)</span></h3>
+<h3>Moat 7 &mdash; Forward secrecy <span class="small">(done, hardware verified &mdash; tickets 31, 37)</span></h3>
 <ul>
-  <li><strong>What it is:</strong> ephemeral ECDH per session; traffic keys are never stored.</li>
+  <li><strong>What it is:</strong> a fresh X25519 key pair per session; traffic keys are never stored.</li>
   <li><strong>Significance:</strong> a leaked static PSK can no longer decrypt <em>recorded</em> sessions. This is the moat that fixes the biggest hole in moat 4.</li>
-  <li><strong>Boundary:</strong> it does <em>not</em> stop live impersonation by someone holding the PSK &mdash; they can participate in the exchange as a legitimate peer.</li>
+  <li><strong>Boundary:</strong> it does <em>not</em> stop live impersonation by someone holding the PSK &mdash; they can participate in the exchange as a legitimate peer. The confirm tag MACs the first 8 bytes of the peer key, not all 32; the DATA tag authenticates the rest implicitly.</li>
 </ul>
 
-<h3>Moat 8 &mdash; Per-message ratchet <span class="small">(host green, integration pending &mdash; ticket 33)</span></h3>
+<h3>Moat 8 &mdash; Per-message ratchet <span class="small">(done, hardware verified &mdash; ticket 33)</span></h3>
 <ul>
   <li><strong>What it is:</strong> traffic keys evolve per message within a session.</li>
   <li><strong>Significance:</strong> compromising one message key does not unroll the whole session. Limits blast radius <em>forward in time</em>.</li>
 </ul>
 
-<h3>Moat 9 &mdash; Encrypted header <span class="small">(host green, integration pending &mdash; ticket 34)</span></h3>
+<h3>Moat 9 &mdash; Masked header <span class="small">(done, hardware verified &mdash; ticket 34)</span></h3>
 <ul>
-  <li><strong>What it is:</strong> session id, sequence number and ACK bits are encrypted, not merely masked.</li>
-  <li><strong>Significance:</strong> reduces metadata leakage. Even the framing becomes opaque to a passive observer.</li>
+  <li><strong>What it is:</strong> session id, sequence number and ACK bits are CTR-masked with ECDH-derived keys after the handshake. The separately-tagged <code>proto_hdr</code> envelope is host code, not on the wire.</li>
+  <li><strong>Significance:</strong> a PSK-only leak cannot strip the mask. Type, length and timing stay visible, and the keystream repeats within one session &mdash; say <em>masked</em>, not &ldquo;encrypted&rdquo;.</li>
 </ul>
 
-<h3>Moat 10 &mdash; AEAD suite <span class="small">(code builds, hardware verification pending &mdash; ticket 32)</span></h3>
+<h3>Moat 10 &mdash; AEAD suite <span class="small">(done, hardware verified as an opt-in &mdash; ticket 32)</span></h3>
 <ul>
   <li><strong>What it is:</strong> opt-in ChaCha20-Poly1305 via <code>-DPHANTOM_USE_AEAD=1</code>.</li>
   <li><strong>Significance:</strong> a modern, standard authenticated-encryption option alongside Speck for the PoC.</li>
 </ul>
 
-<h3>Moat 11 &mdash; Device zeroization <span class="small">(host green, wiring/verification pending &mdash; ticket 36)</span></h3>
+<h3>Moat 11 &mdash; Device zeroization <span class="small">(done, hardware verified on BYE &mdash; ticket 36)</span></h3>
 <ul>
   <li><strong>What it is:</strong> wipe derived keys on BYE or a 2.5 s two-button chord.</li>
   <li><strong>Significance:</strong> innermost crypto moat &mdash; protects secrets already <em>inside</em> the castle after an orderly teardown.</li>
@@ -110,9 +110,9 @@
 <h2>2. The sentence to put in docs</h2>
 <div class="callout">
 <strong>Outer moats (already dug):</strong> camouflage &rarr; WPA2 &rarr; BSSID lock &rarr; app PSK/KDF &rarr; key confirmation &rarr; replay window.<br>
-<strong>Inner moats (being dug now):</strong> forward secrecy &rarr; per-message ratchet &rarr; encrypted header &rarr; AEAD &rarr; zeroization &rarr; LPI decoys.<br>
-<strong>Inspection (planned):</strong> hardware hardening on a spare board + independent review.<br>
-<strong>Honest boundary:</strong> a leaked PSK still permits <em>live</em> impersonation; forward secrecy only removes the <em>recorded-history</em> damage.
+<strong>Inner moats (dug and hardware-verified):</strong> forward secrecy &rarr; per-message ratchet &rarr; masked header &rarr; AEAD opt-in &rarr; zeroization &rarr; LPI decoys.<br>
+<strong>Inspection (planned):</strong> hardware hardening on a spare board + independent review (PR open).<br>
+<strong>Honest boundary:</strong> a leaked PSK still permits <em>live</em> impersonation; forward secrecy only removes the <em>recorded-history</em> damage. The confirm tag MACs 8 of 32 public-key bytes, and the header mask keystream repeats within a session &mdash; neither is claimed as full binding or header confidentiality.
 </div>
 
 <h2>3. The one-line override &mdash; why open source is fine</h2>
