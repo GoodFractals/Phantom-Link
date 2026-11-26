@@ -2,6 +2,10 @@
 
 ## Knowledge
 
+- [Reference: The black-box experiment](reference/the-black-box-experiment.html)
+  The early story: proving a reliable two-board transport over a proprietary
+  Wi-Fi firmware blob before any crypto existed. Use for: explaining what was
+  actually hard, and why the encryption was the reward, not the starting point.
 - [Reference: Proof, then brag](reference/claims-brag-sheet.html)
   Fifteen plain-English claims in the form &ldquo;Can we prove it? / Proven / Brag&rdquo;.
   Every brag is bolted to a named test or log. Use for: interview answers,

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Black-Box Experiment &mdash; Phantom Link</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+<link rel="stylesheet" href="../assets/brag.css">
+</head>
+<body>
+<p class="small">Phantom Link teaching workspace &mdash; reference sheet &mdash; [[MISSION.md]]</p>
+<h1>The black-box experiment</h1>
+<p><strong>Before there was a cipher, there was one question: can two Pico 2 W boards, driven only through a closed Wi-Fi firmware blob and a public SDK, find each other and move a message at all?</strong></p>
+<p><strong>The encryption was the cherry on top. The experiment was the transport.</strong> Every crypto claim in the other brag sheet assumes the answer to this one was yes — and in the early days it was not at all obvious that it would be.</p>
+
+<div class="callout"><strong>Rule of the house:</strong> this page brags about the thing we proved <em>first</em>. The radio was opaque, the SDK was incomplete, and nothing about "two boards talking" was guaranteed. No NDA claims, no firmware hacks, no magic — just a black box driven through its public interfaces until it moved a byte.</div>
+
+<h2>0. What "black box" meant in practice</h2>
+<p>The CYW43439 firmware is a proprietary binary blob shipped as precompiled headers in the Pico SDK (for example <code>lib/cyw43-driver/firmware/w43439A0_7_95_49_00_combined.h</code>, about 1.4 MB). We never patched it, reverse-engineered it, or injected raw 802.11 frames. We had normal STA/AP interfaces, lwIP sockets, and a handful of GPIO calls — and nothing else.</p>
+<p>That is the constraint that makes the experiment interesting: <strong>we had to build a reliable, honest link without being able to see or change the thing carrying it.</strong> ADR 0002 records the consequence directly — true StegoFrameOrder needs monitor mode and raw frame injection, which this hardware does not expose through <code>cyw43</code>. So the side channel had to move up a layer. We did not pretend otherwise.</p>
+
+<h2>1. The questions we had to answer first</h2>
+
+<div class="claim">
+<h3><span class="num">Q1</span> Can an AP even come up without a DHCP server?</h3>
+<p><span class="lbl">Proven</span> SDK 2.3.1's AP build has no DHCP server. The STA uses a fixed address <code>192.168.4.2/24</code> with gateway <code>192.168.4.1</code>, and the pair still links. Early two-board logs show the STA waiting for an IP; the static-address change fixed it.</p>
+<p class="brag"><span class="lbl">Brag</span> We read the actual SDK behaviour instead of assuming a router existed, then made the link work with two addresses and no infrastructure at all.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">Q2</span> Can the UI stay alive while Wi-Fi associates?</h3>
+<p><span class="lbl">Proven</span> Wi-Fi bring-up is non-blocking; OLED, input, codec and render path run unconditionally. <code>IS_AP</code> selects only the Wi-Fi role — both boards type, send, receive and render.</p>
+<p class="brag"><span class="lbl">Brag</span> The radio never owned the main loop. A board can be associate-ing, drawing a menu, and reading the joystick at the same time — on a part with roughly 8 KB of stack.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">Q3</span> How do two strangers find each other?</h3>
+<p><span class="lbl">Proven</span> The AP learns the peer address from the received datagram; the STA initiates <code>HELLO</code> / <code>HELLO_ACK</code>. Peer learning and static addressing made the first real LINK UP possible without any configuration exchange outside UDP.</p>
+<p class="brag"><span class="lbl">Brag</span> No handshake server, no discovery daemon, no broadcast magic. The packet itself told us who was talking.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">Q4</span> Is the link state true, or just a happy LED?</h3>
+<p><span class="lbl">Proven</span> T2 visual check confirmed the HUD reflects the real session state; ticket 09 passed T2&ndash;T12 on build <code>e4fadca7</code> with replay rejected and both serial logs archived.</p>
+<p class="brag"><span class="lbl">Brag</span> When the screen said LINK, there was actually a link. That sounds trivial until you have watched a radio lie to a UI.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">Q5</span> Can a 21-glyph message survive a datagram path?</h3>
+<p><span class="lbl">Proven</span> Tickets 06/07: 10% induced loss still delivers a 21-glyph message exactly once in both directions; sequence numbers, ACKs, bounded retransmit and a 64-deep TX queue; DELETE aborts cleanly.</p>
+<p class="brag"><span class="lbl">Brag</span> We built reliability on top of UDP — no TCP, no broker, no retransmission service — and proved it under induced loss.</p>
+</div>
+
+<h2>2. The moment the experiment turned</h2>
+<p>First came a boot banner on both boards before any Wi-Fi line (ticket 02, with a hash tying the log to <code>main.c</code>). Then came the first <code>link=UP</code> on both sides with a shared session. Then a 21-glyph round-trip. At that point the black box was no longer a mystery — it was a transport we could build on.</p>
+<div class="callout"><strong>Only then did the cherry go on:</strong> tickets 10&ndash;14 added Speck, KDF, CMAC and hardware crypto acceptance; 31&ndash;34 added ephemeral X25519, per-frame ratchets, ECDH-masked headers and an AEAD opt-in. None of that would have meant anything if the radio had refused to carry a reliable frame in the first place.</div>
+
+<h2>3. The sentence to say out loud</h2>
+<p class="say"><span class="lbl">Say</span> &ldquo;I started with a $5 radio whose firmware I could not inspect, proved a reliable two-board transport using only public SDK APIs, and only then layered forward-secret encryption on top. The interesting problem was the black box; the crypto was the reward for solving it.&rdquo;</p>
+<p>That is a systems-engineering story, not a library-usage story. It says you can work at the boundary where hardware, a closed vendor blob, and your own protocol meet — and that you know which part was actually hard.</p>
+
+<h2>4. What this does not claim</h2>
+<ul>
+  <li>Not an NDA claim: the firmware is proprietary, but we are not a party to any agreement about it.</li>
+  <li>Not a firmware hack: no patching, no reverse engineering, no raw 802.11 injection.</li>
+  <li>Not MAC-layer SFO or covertness: the CYW43 only exposes normal STA/AP interfaces; our traffic shaping is application-layer (ADR 0002, tickets 15/16/29).</li>
+  <li>Not untethered yet: this experiment used USB-connected boards; power-rig gates are still open.</li>
+</ul>
+
+<h2>5. Sources</h2>
+<ul>
+  <li><a href="claims-brag-sheet.html">Claims brag sheet</a> &mdash; the crypto cherry, 16 verified claims.</li>
+  <li><a href="../lessons/0003-the-claims-ledger.html">Claims ledger</a> &mdash; proof, inference and boundary for all 39 tickets.</li>
+  <li><code>docs/adr/0002-sfo-is-an-application-layer-telemetry-channel.md</code> &mdash; why the radio's interface shaped the design.</li>
+  <li>Tickets 02, 04, 05, 06, 07, 09 and <code>logs/capture14/</code> &mdash; the early evidence, with build hashes.</li>
+</ul>
+<p class="small">Ask me to tighten any line here before you use it in an interview. [[RESOURCES.md]]</p>
+</body>
+</html>
