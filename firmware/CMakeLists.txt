@@ -1,13 +1,16 @@
 cmake_minimum_required(VERSION 3.13)
 
+# PICO_BOARD must be set BEFORE importing the SDK: pico_sdk_import.cmake seeds
+# the cache with the generic `pico` board, and a later `set(... CACHE ...)` does
+# not override it. A clean checkout otherwise builds for rp2040 and fails.
+set(PICO_BOARD pico2_w CACHE STRING "Board type")
+
 include(pico_sdk_import.cmake)
 
 project(phantom_link C CXX ASM)
 set(PICO_MBEDTLS_CONFIG_FILE "phantom_mbedtls_config.h" CACHE STRING "Phantom Link mbedTLS config")
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
-
-set(PICO_BOARD pico2_w CACHE STRING "Board type")
 
 # Build identity: the first eight hex digits of main.c's SHA256. The directory
 # dependency makes CMake re-run when main.c changes, so the banner cannot go
