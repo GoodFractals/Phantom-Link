@@ -20,7 +20,7 @@ string(SUBSTRING "${PHANTOM_SOURCE_HASH}" 0 8 PHANTOM_BUILD_HASH)
 pico_sdk_init()
 
 function(add_phantom_target target_name is_ap)
-    add_executable(${target_name} main.c proto/proto_frame.c proto/proto_session.c proto/proto_msg.c proto/proto_txq.c proto/proto_crypto.c proto/proto_lpi.c proto/proto_sfo.c proto/proto_sfo_telemetry.c proto/proto_reconnect.c proto/proto_zeroize.c proto/proto_aead.c proto/proto_fs.c proto/proto_x25519.c)
+    add_executable(${target_name} main.c proto/proto_frame.c proto/proto_session.c proto/proto_msg.c proto/proto_txq.c proto/proto_crypto.c proto/proto_lpi.c proto/proto_sfo.c proto/proto_sfo_telemetry.c proto/proto_reconnect.c proto/proto_zeroize.c proto/proto_aead.c proto/proto_fs.c proto/proto_x25519.c proto/proto_ratchet.c)
 
     target_compile_definitions(${target_name} PRIVATE
         IS_AP=${is_ap}

@@ -56,6 +56,7 @@
 #include "proto/proto_aead.h"
 #include "proto/proto_fs.h"
 #include "proto/proto_x25519.h"
+#include "proto/proto_ratchet.h"
 
 #define WIFI_SSID PHANTOM_WIFI_SSID
 #define WIFI_PASSWORD PHANTOM_WIFI_PASSWORD
@@ -178,6 +179,11 @@ static bool ecdh_secrets_registered = false;
 static x25519_ctx_t ecdh_ctx;
 static uint8_t our_pubkey[X25519_KEY_BYTES];
 static bool ecdh_ready = false;
+/* Per-frame ratchets: each DATA frame gets a distinct key from its frame seq.
+ * Masters are the ECDH-derived session keys, initialized on each handshake. */
+static ratchet_t tx_ratchet;
+static ratchet_t rx_ratchet;
+static bool ratchets_ready = false;
 static uint32_t auth_failures = 0;
 static proto_session_t session;  /* used by derive_session_keys above */
 static uint32_t crypto_errors = 0;
@@ -347,7 +353,12 @@ static bool derive_session_keys(const uint8_t peer_pub[X25519_KEY_BYTES]) {
     }
     memset(shared, 0, sizeof shared);
     sess_keys_ready = true;
-    printf("SESSION KEYS derived (X25519)\n");
+    /* Ticket 33: each DATA frame key comes from a per-frame ratchet whose
+     * master is the ECDH session key for that direction. */
+    ratchet_init(&tx_ratchet, sess_tx_key);
+    ratchet_init(&rx_ratchet, sess_rx_key);
+    ratchets_ready = true;
+    printf("SESSION KEYS derived (X25519 + ratchet)\n");
     return true;
 }
 
@@ -714,6 +725,13 @@ static void request_teardown(const char *reason) {
     set_link_down("BYE");
     zeroize_tracker_clear_all(&zeroizer);
     keys_cleared = true;
+    /* The tracker just wiped these buffers; invalidate their state flags so
+     * the next handshake regenerates fresh ECDH keys instead of using a wiped
+     * context (which caused endless link churn after a BYE). */
+    ecdh_ready = false;
+    ecdh_secrets_registered = false;
+    sess_keys_ready = false;
+    ratchets_ready = false;
     printf("SECRETS zeroized\n");
 }
 
@@ -1052,6 +1070,10 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
         // wifi_service on a transient outage, so do it explicitly for BYE.
         zeroize_tracker_clear_all(&zeroizer);
         keys_cleared = true;
+        ecdh_ready = false;
+        ecdh_secrets_registered = false;
+        sess_keys_ready = false;
+        ratchets_ready = false;
         printf("SECRETS zeroized (peer BYE)\n");
         break;
 
