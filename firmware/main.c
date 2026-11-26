@@ -958,6 +958,12 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
     case PROTO_TYPE_BYE:
         printf("RX BYE: peer closing link\n");
         set_link_down("BYE");
+        // Mirror the initiator's teardown: clear secrets on this side too.
+        // set_link_down deliberately does not zeroize when called from
+        // wifi_service on a transient outage, so do it explicitly for BYE.
+        zeroize_tracker_clear_all(&zeroizer);
+        keys_cleared = true;
+        printf("SECRETS zeroized (peer BYE)\n");
         break;
 
     case PROTO_TYPE_ACK: {
@@ -2056,6 +2062,7 @@ int main(void) {
         int ch = getchar_timeout_us(0);
         LOOP_DONE("char");
         if (ch == 'S' || ch == 's') status_dump();
+        if (ch == 'Z' || ch == 'z') request_teardown("serial-test");
         if (ch == 'B' || ch == 'b') bootsel_command(now);
 
         LOOP_DONE("wifi");
