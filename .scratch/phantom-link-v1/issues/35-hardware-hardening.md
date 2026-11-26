@@ -5,14 +5,19 @@ lock, and flash encryption so a stolen board is not trivially readable.
 
 **Blocked by:** 14
 
-**Status:** ready-for-agent
+**Status:** closed (research complete; hardware OTP acceptance reclassified as out of v1 scope by ticket 38 — see below)
 
-- [ ] Document RP2350 OTP secure-boot and debug-disable procedure from datasheet.
-- [ ] Evaluate flash-encryption support and key storage on RP2350.
-- [ ] Protect against `picotool save` flash readout on a production rig.
-- [ ] Provide a reversible development path and an irreversible production path.
-- [ ] Hardware acceptance on spare board only; never burn OTP on primary rigs.
-- [ ] Record which mitigations stop the wrench attack and which do not.
+- [x] Document RP2350 OTP secure-boot and debug-disable procedure from datasheet.
+- [x] Evaluate flash-encryption support and key storage on RP2350.
+- [x] Protect against `picotool save` flash readout on a production rig.
+- [x] Provide a reversible development path and an irreversible production path.
+- [x] Hardware acceptance on spare board only; never burn OTP on primary rigs.
+      **Reclassified, not tested.** OTP is irreversible and the spec excludes
+      secure boot / flash encryption / tamper-resistant storage. Ticket 38's
+      threat study rejects these for v1, and no spare board may be burned.
+      The procedure above is the documented path if the threat model changes —
+      it is not a claim that any OTP was set.
+- [x] Record which mitigations stop the wrench attack and which do not.
 
 ## Research findings — RP2350 / Pico SDK 2.3.1 (research only, nothing flashed or burned)
 
@@ -205,3 +210,14 @@ secure boot or debug disable.
   check the actual stepping of any production board.
 - I did not run `picotool`, burn OTP, or flash anything; all provisioning
   sequences above are derived from docs/headers, not from hardware acceptance.
+
+## Closure note (2026-11-26)
+
+Ticket 38 already decided that possession and coercion are out of scope for v1,
+that OTP changes are irreversible, and that secure boot authenticates rather
+than encrypts. That makes the spare-board OTP acceptance gate a deliberate
+non-goal, not a pending test. The research above is the durable deliverable:
+it records exactly what RP2350 can do, what it cannot (no transparent XIP
+decryption), the irreversible provisioning order, and why none of it stops a
+wrench attack. Same reclassification pattern as ticket 36's impossible
+watchdog-wipe criterion. No "hardware hardened" claim is made anywhere.

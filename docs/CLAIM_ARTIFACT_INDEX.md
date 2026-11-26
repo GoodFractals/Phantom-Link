@@ -51,6 +51,10 @@ ticket files and this index are what survive in git.
 | 29 | sniffer detection report (17) + airtime cost (22) |
 | 37 | published findings from a real human reviewer via PR |
 
+Ticket 35 was closed as research-only: its spare-board OTP acceptance gate was
+reclassified out of v1 scope by ticket 38. No OTP was burned and no
+"hardware hardened" claim is made.
+
 ## Release order
 
 1. Finish ticket 21 (soak + report), 17, 22, 23, 29 as hardware allows.
