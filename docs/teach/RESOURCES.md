@@ -2,6 +2,9 @@
 
 ## Knowledge
 
+- [Lesson 004: Where the project stands](lessons/0004-where-the-project-stands.html)
+  A four-minute status board: 27 closed, 12 open, what each is waiting for, and
+  the one sentence you can safely say. Uses the reusable `assets/status.css`.
 - [Lesson 003: The Claims Ledger](lessons/0003-the-claims-ledger.html)
   All 39 tickets in one print-friendly page: what each proves (PROVEN), what a
   reader might infer (DERIVED), and the line that must not be crossed. Use for:

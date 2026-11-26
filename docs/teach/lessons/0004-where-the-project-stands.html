@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 004 &mdash; Where the project stands</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+<link rel="stylesheet" href="../assets/status.css">
+</head>
+<body>
+<p class="small">Phantom Link teaching workspace &mdash; Lesson 004 &mdash; [[MISSION.md]]</p>
+<h1>Where the project stands</h1>
+<p class="small">Read time: 4 minutes. One win: you can look at the ticket board and say, without guessing, what is proven, what is waiting, and what you are allowed to claim.</p>
+
+<div class="callout"><strong>Rule of the house:</strong> an open ticket is not a broken feature. It is a gate that has not been passed. Closed means a test or a log exists. The difference between those two is the whole game.</div>
+
+<h2>0. The board in one picture</h2>
+<div class="status-bar" role="img" aria-label="27 of 39 tickets closed">
+  <span class="done" style="width:69%"></span><span class="wait" style="width:13%"></span>
+  <span class="open" style="width:10%"></span><span class="done" style="width:8%;background:#b9c9b4"></span>
+</div>
+<p class="status-legend">27 closed &middot; 5 waiting on hardware or time &middot; 4 parked UI &middot; 3 waiting on people and process &mdash; 39 tickets total on 2026-11-26.</p>
+
+<h2>1. Done: what you can say</h2>
+<div class="bucket">
+  <p class="name">Framing and protocol &mdash; 01&ndash;09</p>
+  <p><span class="tag">Proof</span> Both boards boot from one source, handshake, frame messages, and pass T2&ndash;T12 on hardware.</p>
+  <p class="name">Crypto &mdash; 10&ndash;14, 31&ndash;34, 36, 38&ndash;39</p>
+  <p><span class="tag">Proof</span> Encrypted DATA, replay and tamper rejection, forward secrecy, per-frame keys, ECDH-masked headers, BYE wipe, BSSID lock &mdash; all verified on the boards.</p>
+  <p class="name">Resilience and audit &mdash; 18&ndash;20, 30</p>
+  <p><span class="tag">Proof</span> Re-links after restarts, watchdog recovers a hang, and STATUS survives a power cycle.</p>
+</div>
+<p>The full evidence for each of those lines is in <a href="0003-the-claims-ledger.html">Lesson 003, the claims ledger</a>.</p>
+
+<h2>2. Still open: what each is waiting for</h2>
+<div class="bucket">
+  <p><span class="tag">17</span> Three distances, 100 bursts each &mdash; needs a tape measure and time.</p>
+  <p><span class="tag">21</span> A 24 h soak with a message every five minutes &mdash; needs time.</p>
+  <p><span class="tag">22</span> Current draw and battery runtime &mdash; needs the power rig.</p>
+  <p><span class="tag">23</span> Untethered boot and link &mdash; blocked by 22.</p>
+  <p><span class="tag">29</span> A sniffer-based detection report &mdash; blocked by 17 and 22.</p>
+  <p><span class="tag">24&ndash;28</span> UI polish &mdash; parked deliberately, not failed.</p>
+  <p><span class="tag">27</span> Tagged release and uncut demo &mdash; needs a freeze.</p>
+  <p><span class="tag">35</span> OTP hardening &mdash; research only; the threat study rejected it for v1.</p>
+  <p><span class="tag">37</span> A real reviewer &mdash; the pull request is open.</p>
+</div>
+
+<h2>3. The sentence test</h2>
+<p><strong>Safe:</strong> &ldquo;Two boards, encrypted messages, and tamper rejection verified on hardware.&rdquo;</p>
+<p><strong>Unsafe:</strong> &ldquo;Untethered all-day secure radio with a reviewed design.&rdquo; Every word in that sentence is an open ticket.</p>
+
+<h2>4. Test yourself</h2>
+<div class="quiz"><strong>Which ticket cannot be called &ldquo;reviewed&rdquo; until a real person signs off?</strong><br>
+A) 17 field measurement &nbsp; B) 37 independent review &nbsp; C) 21 soak<br>
+<span class="answer">B &mdash; 37. A machine pass is an aid, not an independent reviewer. The pull request is how a human signs off.</span></div>
+<div class="quiz"><strong>What finally closed ticket 20 after the flash writes were fixed?</strong><br>
+A) A longer soak &nbsp; B) A host test &nbsp; C) A power cycle<br>
+<span class="answer">C &mdash; A power cycle. A write happening once proves the mechanism; reading the record back after reboot proves persistence.</span></div>
+<div class="quiz"><strong>Which claim is safe to say out loud today?</strong><br>
+A) Tamper rejected on hardware &nbsp; B) Twenty-four hour soak passed &nbsp; C) Header is AES encrypted<br>
+<span class="answer">A &mdash; Tamper rejected on hardware. Ticket 14 proved it. Ticket 21 is still running, and the header is masked, not AES-encrypted.</span></div>
+<div class="quiz"><strong>How many tickets are still open?</strong><br>
+A) Seven remain &nbsp; B) Twelve remain &nbsp; C) Twenty remain<br>
+<span class="answer">B &mdash; Twelve remain. The board has 39 tickets: 27 closed, 12 open. The open ones wait on time, hardware, or people.</span></div>
+
+<h2>5. Go deeper</h2>
+<ul>
+  <li>Primary source: <code>.scratch/phantom-link-v1/issues/*.md</code> &mdash; the tickets themselves. Every line above comes from one of them.</li>
+  <li><a href="0003-the-claims-ledger.html">Lesson 003</a> &mdash; the full ledger: acceptance gate, proof, inference and boundary for all 39.</li>
+  <li><a href="0002-the-moats.html">Lesson 002</a> &mdash; what each defence actually protects, outside in.</li>
+  <li><a href="../reference/phantom-link-sfo.md">Reference: SFO</a> &mdash; why our side channel is telemetry, not covert radio.</li>
+</ul>
+<p class="small">Ask me a follow-up about any line here &mdash; that is what a teacher is for. [[RESOURCES.md]]</p>
+</body>
+</html>

@@ -1,0 +1,22 @@
+/* Reusable status component for teach lessons (ticket/progress overviews). */
+.status-bar { display: flex; height: 1.1rem; border: 1px solid var(--rule);
+              border-radius: 3px; overflow: hidden; margin: 1rem 0 .4rem; }
+.status-bar span { display: block; height: 100%; }
+.status-bar .done { background: #7fa87a; }
+.status-bar .wait { background: #d9b26a; }
+.status-bar .open { background: #b8b3a9; }
+.status-legend { font-size: 13px; color: var(--muted); margin: 0 0 1.2rem; }
+.pill { display: inline-block; font: 12px/1.4 -apple-system, BlinkMacSystemFont,
+        'Segoe UI', sans-serif; padding: .08rem .4rem; border-radius: 3px;
+        white-space: nowrap; }
+.pill.green { background: #dcead9; color: #27502a; }
+.pill.amber { background: #f4e4c8; color: #6b4a12; }
+.pill.grey  { background: #e6e2dc; color: #555; }
+.bucket { border-top: 1px solid var(--rule); padding: .55rem 0 .2rem; }
+.bucket p { margin: .18rem 0; font-size: 14.5px; line-height: 1.45; }
+.bucket .name { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                font-weight: bold; margin-bottom: .3rem !important; }
+.bucket .tag { display: inline-block; min-width: 3.6rem; color: var(--muted);
+               font: 11px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+               text-transform: uppercase; letter-spacing: .04em; }
+@media print { .status-bar { print-color-adjust: exact; } }
