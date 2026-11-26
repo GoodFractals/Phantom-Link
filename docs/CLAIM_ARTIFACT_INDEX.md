@@ -38,6 +38,7 @@ ticket files and this index are what survive in git.
 | 13 | Real firmware bugs found and fixed | 20, 37 | tickets 20 and 37 findings, `docs/REVIEW_PACK_37.md` |
 | 14 | LPI-oriented traffic shaping | 15, 16, 29 | `firmware/proto/proto_lpi.c`, `proto_sfo.c`, ticket 29 |
 | 15 | Reproducible, traceable builds | 01, 02 | `firmware/host/tests/`, `firmware/CMakeLists.txt`, ticket 02 |
+| 16 | Black-box radio, public APIs only | 15, 29 | `docs/adr/0002-sfo-is-an-application-layer-telemetry-channel.md`, `firmware/main.c` (CYW43/lwIP calls only) |
 
 ## Gates still open — no claim allowed
 
