@@ -175,6 +175,10 @@ static uint8_t psk_rx_key[16];
  * the suite calls (Speck uses 16, AEAD uses 32). */
 static uint8_t sess_tx_key[FS_KEY_BYTES];
 static uint8_t sess_rx_key[FS_KEY_BYTES];
+/* Ticket 34: dedicated 16-byte header-mask keys, KDF-separated from the
+ * traffic keys so the same material is never reused for two purposes. */
+static uint8_t hdr_mask_tx_key[SPECK128_KEY_BYTES];
+static uint8_t hdr_mask_rx_key[SPECK128_KEY_BYTES];
 static bool sess_keys_ready = false;
 static bool ecdh_secrets_registered = false;
 static x25519_ctx_t ecdh_ctx;
@@ -194,6 +198,8 @@ static const char *pending_link_reason = NULL;
 static uint32_t auth_failures = 0;
 static proto_session_t session;  /* used by derive_session_keys above */
 static uint32_t crypto_errors = 0;
+static uint32_t hdr_eph_tx = 0;
+static uint32_t hdr_eph_rx = 0;
 static uint32_t decoy_tx_count = 0;
 static uint32_t last_decoy_ms = 0;
 static uint32_t next_decoy_ms = DECOY_BASE_MS;
@@ -273,7 +279,15 @@ static void frame_nonce(uint32_t seq, uint8_t nonce[PC_NONCE_BYTES]) {
     memset(nonce + 5u, 0, PC_NONCE_BYTES - 5u);
 }
 
+/* PSK-masked handshake frames use a fixed zero nonce (the session id is not
+ * established yet). Ephemeral-masked frames bind the nonce to the session id
+ * so the keystream changes on every handshake. */
 static const uint8_t HEADER_MASK_NONCE[PC_NONCE_BYTES] = {0};
+
+static void header_mask_nonce(uint8_t nonce[PC_NONCE_BYTES]) {
+    memset(nonce, 0, PC_NONCE_BYTES);
+    memcpy(nonce, &session.session_id, sizeof session.session_id);
+}
 
 #define STATUS_SLOTS 16u
 #define STATUS_SLOT_SIZE FLASH_PAGE_SIZE
@@ -305,12 +319,30 @@ static uint32_t status_slot = 0;
 static status_record_t status_loaded;
 static bool status_valid = false;
 
-static void mask_header_fields(uint8_t *buf) {
-    pc_ctr_xcrypt(psk_tx_key, HEADER_MASK_NONCE, buf + 6u, 12u);
+/* Ticket 34: mask bytes 6..17 (session_id, seq, ack). Handshake frames stay on
+ * the static PSK because the peer has no ECDH keys yet; every later frame uses
+ * the ECDH-derived header key, signalled by a clear-prefix flag bit. */
+static void mask_header_fields(uint8_t *buf, bool ephemeral) {
+    if (ephemeral) {
+        uint8_t nonce[PC_NONCE_BYTES];
+        buf[4] |= (uint8_t)PROTO_FLAG_EPH_MASK;
+        hdr_eph_tx++;
+        header_mask_nonce(nonce);
+        pc_ctr_xcrypt(hdr_mask_tx_key, nonce, buf + 6u, 12u);
+    } else {
+        pc_ctr_xcrypt(psk_tx_key, HEADER_MASK_NONCE, buf + 6u, 12u);
+    }
 }
 
 static void unmask_header_fields(uint8_t *buf) {
-    pc_ctr_xcrypt(psk_rx_key, HEADER_MASK_NONCE, buf + 6u, 12u);
+    if ((buf[4] & (uint8_t)PROTO_FLAG_EPH_MASK) != 0u) {
+        uint8_t nonce[PC_NONCE_BYTES];
+        hdr_eph_rx++;
+        header_mask_nonce(nonce);
+        pc_ctr_xcrypt(hdr_mask_rx_key, nonce, buf + 6u, 12u);
+    } else {
+        pc_ctr_xcrypt(psk_rx_key, HEADER_MASK_NONCE, buf + 6u, 12u);
+    }
 }
 
 static void register_key_secrets(void) {
@@ -339,6 +371,10 @@ static bool derive_session_keys(const uint8_t peer_pub[X25519_KEY_BYTES]) {
                                  sizeof ecdh_ctx.opaque);
         zeroize_tracker_register(&zeroizer, sess_tx_key, sizeof sess_tx_key);
         zeroize_tracker_register(&zeroizer, sess_rx_key, sizeof sess_rx_key);
+        zeroize_tracker_register(&zeroizer, hdr_mask_tx_key,
+                                 sizeof hdr_mask_tx_key);
+        zeroize_tracker_register(&zeroizer, hdr_mask_rx_key,
+                                 sizeof hdr_mask_rx_key);
         ecdh_secrets_registered = true;
     }
     if (!x25519_shared_secret(&ecdh_ctx, peer_pub, shared)) return false;
@@ -364,6 +400,21 @@ static bool derive_session_keys(const uint8_t peer_pub[X25519_KEY_BYTES]) {
         memset(sta_to_ap, 0, sizeof sta_to_ap);
     }
     memset(shared, 0, sizeof shared);
+    /* Ticket 34: domain-separated header-mask keys. The PSK-derived keys are
+     * still used for HELLO/HELLO_ACK only; everything after the handshake is
+     * masked with these ECDH-derived keys so a leaked PSK cannot read
+     * session_id/seq/ack. */
+    {
+        static const uint8_t salt[] = "BONNIE-CLYDE-hdr-v1";
+        uint8_t material[PC_DERIVED_KEY_BYTES];
+        /* The SAME label on both sides: directional separation comes from
+         * ap_to_sta vs sta_to_ap, not from the label. */
+        pc_kdf(sess_tx_key, salt, sizeof salt - 1u, 0x05u, material);
+        memcpy(hdr_mask_tx_key, material, SPECK128_KEY_BYTES);
+        pc_kdf(sess_rx_key, salt, sizeof salt - 1u, 0x05u, material);
+        memcpy(hdr_mask_rx_key, material, SPECK128_KEY_BYTES);
+        memset(material, 0, sizeof material);
+    }
     sess_keys_ready = true;
     /* Ticket 33: each DATA frame key comes from a per-frame ratchet whose
      * master is the ECDH session key for that direction. */
@@ -503,7 +554,11 @@ static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
     if (type == PROTO_TYPE_DATA) frame.flags |= PROTO_FLAG_ENCRYPTED;
 
     status = proto_frame_encode(buf, sizeof buf, &frame, &len);
-    if (status == PROTO_OK) mask_header_fields(buf);
+    {
+        bool eph = sess_keys_ready && type != PROTO_TYPE_HELLO &&
+                   type != PROTO_TYPE_HELLO_ACK;
+        if (status == PROTO_OK) mask_header_fields(buf, eph);
+    }
     if (status == PROTO_OK && type == PROTO_TYPE_DATA) {
         uint8_t nonce[PC_NONCE_BYTES];
         uint8_t frame_key[PC_DERIVED_KEY_BYTES];
@@ -991,6 +1046,8 @@ static void status_dump(void) {
     printf("ratchet tx_key=%u rx_key=%u rollbacks=%u ready=%d\n",
            (unsigned)tx_ratchet.accepted, (unsigned)rx_ratchet.accepted,
            (unsigned)rx_ratchet.rollbacks_rejected, (int)ratchets_ready);
+    printf("hdr_mask eph_tx=%u eph_rx=%u ready=%d\n",
+           (unsigned)hdr_eph_tx, (unsigned)hdr_eph_rx, (int)sess_keys_ready);
     printf("=== END STATUS ===\n");
 }
 

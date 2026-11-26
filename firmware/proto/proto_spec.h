@@ -43,6 +43,11 @@
 #define PROTO_FLAG_ENCRYPTED (1u << 1)
 #define PROTO_FLAG_FINAL     (1u << 2)
 #define PROTO_FLAG_SFO_SYNC  (1u << 3)
+/* Ticket 34: header fields (bytes 6..17) are CTR-masked with an ECDH-derived
+ * key when this bit is set, otherwise with the static PSK (HELLO/HELLO_ACK and
+ * any frame sent before session keys exist). The bit lives in the clear prefix
+ * so the receiver can select the unmask key before decoding the header. */
+#define PROTO_FLAG_EPH_MASK  (1u << 4)
 
 typedef enum {
     PROTO_TYPE_HELLO = 1,
