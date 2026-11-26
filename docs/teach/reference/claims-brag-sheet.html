@@ -123,6 +123,7 @@
 <p><span class="lbl">Proven</span> CYW43439 firmware is a proprietary blob; we used only public Pico SDK / CYW43 STA/AP and lwIP UDP interfaces. No firmware patch, no driver hack, no raw 802.11 injection (ADR 0002, ticket 29). Everything below the UDP socket is a black box to us.</p>
 <p class="brag"><span class="lbl">Brag</span> Our whole security protocol sits <em>above</em> a closed radio we were never allowed to look inside. Every guarantee is in our own code, portable to any board that gives us a UDP socket — and we are precise about what that costs: application-layer traffic shaping, never MAC-layer covertness.</p>
 <p class="say"><span class="lbl">Say</span> &ldquo;Black-box radio, public APIs only, all security in our layer.&rdquo;</p>
+<p><span class="lbl">Don't say</span> &ldquo;We're under NDA&rdquo; or &ldquo;we hacked the firmware&rdquo; &mdash; the firmware is proprietary and its internals are not public, but we are not a party to any NDA and we never touched it. &ldquo;Proprietary firmware blob, public SDK only&rdquo; is verifiable in the SDK and defensible in an interview.</p>
 </div>
 
 <h2>Why this is hard on a $5-class part</h2>
