@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phantom Link &mdash; proof, then brag</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+<link rel="stylesheet" href="../assets/brag.css">
+</head>
+<body>
+<p class="small">Phantom Link teaching workspace &mdash; reference sheet &mdash; [[MISSION.md]]</p>
+<h1>Proof, then brag</h1>
+<p class="small">Plain English, confident on purpose. Each item says what we tested, how we know, and the sentence you can say out loud. If the proof line is empty, the brag line does not exist.</p>
+
+<div class="callout"><strong>The rule:</strong> we flaunt only what we can reproduce. Nothing here says &ldquo;reviewed&rdquo;, &ldquo;untethered&rdquo;, &ldquo;covert&rdquo; or &ldquo;24-hour soak passed&rdquo; — those gates are still open. Bold claims with a log behind them are fine. Bold claims without one are marketing.</div>
+
+<h2>The 30-second version</h2>
+<p>Two $5-class Pico 2 W boards run one firmware image, each with a working UI. They build a private Wi-Fi link, confirm a shared secret, then throw that secret away for session keys that change every session and every message. We captured the radio with a sniffer that had no password and found zero readable messages. We can tamper with a frame, replay an old one, or use the wrong password — each is rejected and counted. Pull either board's plug and the pair reconnects in under ten seconds, twenty times out of twenty. Hang the firmware on purpose and the watchdog brings it back in under eight. And the boards remember their audit counters through a power cut.</p>
+
+<h2>The claims, one by one</h2>
+
+<div class="claim">
+<h3><span class="num">TEST 01</span> Can two boards really be peers, not a screen bolted to a radio?</h3>
+<p><span class="lbl">Proven</span> One <code>main.c</code>, two CMake targets; <code>IS_AP</code> selects only Wi-Fi role. OLED, joystick, buttons, codec, parser and render path compile unconditionally. T2&ndash;T12 passed on both boards.</p>
+<p class="brag"><span class="lbl">Brag</span> Both devices can type, send, receive and render. Either one can be the access point.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 02</span> Can an observer read our messages off the air?</h3>
+<p><span class="lbl">Proven</span> Ticket 14: WPA2 decrypted-path capture plus an ESP32 no-PSK RF capture. 73 AP DATA frames, zero plaintext hits. Logs archived with the build hashes.</p>
+<p class="brag"><span class="lbl">Brag</span> We put the link on air and attacked it with a sniffer that had no credentials. It found nothing readable.</p>
+<p class="say"><span class="lbl">Say</span> &ldquo;No plaintext in a password-less RF capture &mdash; 73 frames, zero hits.&rdquo;</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 03</span> Does a stolen config secret unlock old conversations?</h3>
+<p><span class="lbl">Proven</span> Ticket 31: ephemeral X25519 key pair generated per session, ECDH mixed with PSK and session ID, on-device self-test gates LINK UP. Ticket 37 review found scalar reuse and we fixed it; BYE &rarr; re-link verified with a fresh session and <code>wrong=0</code>.</p>
+<p class="brag"><span class="lbl">Brag</span> A leaked setup key cannot decrypt yesterday's traffic. The session key is born and dies with the session.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 04</span> Is one message key the whole session?</h3>
+<p><span class="lbl">Proven</span> Ticket 33: per-frame keys from <code>pc_kdf(master, LE32(seq), 0x04)</code>. Hardware probe: STA <code>tx_key=1</code>, AP <code>rx_key=1</code>, zero rollbacks and zero crypto errors; 95 s soak clean.</p>
+<p class="brag"><span class="lbl">Brag</span> Every frame gets its own key. Break one frame and you have learned nothing about the next.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 05</span> Can somebody strip the frame headers and track the session?</h3>
+<p><span class="lbl">Proven</span> Ticket 34: session ID, sequence and ACK are masked with domain-separated ECDH keys after the handshake, selected by a clear-prefix flag. 95 s soak with <code>wrong=0</code>, <code>crypto=0</code>. Host <code>proto_hdr</code> tests cover tamper, wrong key and wrong seq.</p>
+<p class="brag"><span class="lbl">Brag</span> A PSK-only leak no longer reveals who is talking or which frame is which. Say &ldquo;masked with session-derived keys&rdquo; &mdash; not &ldquo;AES-encrypted header&rdquo;.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 06</span> What happens if we flip a bit in a message?</h3>
+<p><span class="lbl">Proven</span> Ticket 14 T16 and 32: hardware tamper probe flips one auth byte; AP rejects it with <code>CRYPTO FAIL: bad tag</code> and increments <code>crypto</code> exactly once. A valid frame immediately after still decrypts.</p>
+<p class="brag"><span class="lbl">Brag</span> Alter a frame in flight and the receiver throws it away, counts it, and carries on. We did it on the actual boards, not just in a simulator.</p>
+<p class="say"><span class="lbl">Say</span> &ldquo;Tamper rejected on hardware, one error counted, next frame fine.&rdquo;</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 07</span> What if someone replays an old frame or uses the wrong password?</h3>
+<p><span class="lbl">Proven</span> Ticket 14 T15/T17: replay gives <code>RX stale</code> with zero accepted; wrong PSK gives <code>AUTH FAILED: HELLO bad tag</code> and no LINK UP. Ticket 13 host tests: 10k replays accepted zero times, every single-bit flip rejected.</p>
+<p class="brag"><span class="lbl">Brag</span> Old frames are dead frames. Wrong key never gets a link. Both behaviours are on camera in the serial logs.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 08</span> Can a forged frame break the key schedule?</h3>
+<p><span class="lbl">Proven</span> Ticket 37 review found that RX advanced the ratchet before checking the tag &mdash; a forged high-seq frame could wedge all later frames. Fixed by snapshotting the ratchet and restoring it on any verification failure. Re-verified with valid and tampered probes.</p>
+<p class="brag"><span class="lbl">Brag</span> We did not stop at &ldquo;the tag rejects it&rdquo;. We asked what the rejected frame changed, found a denial-of-service hole, and closed it.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 09</span> Can we use a modern cipher, or are we stuck with one?</h3>
+<p><span class="lbl">Proven</span> Ticket 32: ChaCha20-Poly1305 behind <code>PHANTOM_USE_AEAD</code>, RFC 8439 KATs, verify-before-decrypt, constant-time compare. Flashed both boards: valid DATA decrypted, tampered DATA rejected, zero auth/wrong errors. Speck remains default.</p>
+<p class="brag"><span class="lbl">Brag</span> The cipher is a build flag, not a rewrite. We verified both suites on silicon.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 10</span> Does the pair survive a board rebooting?</h3>
+<p><span class="lbl">Proven</span> Ticket 18: 10/10 AP restarts and 10/10 STA restarts re-linked in under 10 s with fresh sessions; bounded backoff and epoch checks in the host state machine.</p>
+<p class="brag"><span class="lbl">Brag</span> Pull the plug on either unit and the other one finds it again. Twenty restarts, twenty recoveries.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 11</span> What if the firmware hangs in the field?</h3>
+<p><span class="lbl">Proven</span> Ticket 19: a compile-time forced hang resets in under 8 s, logs <code>RESET reason: watchdog</code>, and re-links. Normal 1 h operation never tripped it.</p>
+<p class="brag"><span class="lbl">Brag</span> We deliberately broke the firmware and watched it heal itself faster than a human could notice.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 12</span> Can we audit a run after the PC is gone?</h3>
+<p><span class="lbl">Proven</span> Ticket 20: STATUS prints every counter; flash ring writes one 88-byte record per minute; a physical power cycle booted with <code>persist seq=4 valid=1</code> &mdash; <code>valid</code> can only be set by reading a valid record back from flash.</p>
+<p class="brag"><span class="lbl">Brag</span> The boards keep their own logbook. We can read the story of an unattended run after the fact.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 13</span> Did we just write tests, or did we find real bugs?</h3>
+<p><span class="lbl">Proven</span> Three defects found and fixed this week: a 168-byte stack over-read in the flash writer, a save interval that wrote every loop iteration (4466 writes in 70 s), and the unauthenticated ratchet advance above. Each was diagnosed from sources/SDK docs and re-verified on hardware.</p>
+<p class="brag"><span class="lbl">Brag</span> The tests were good enough to make us doubt a passing result. We chased a &ldquo;fixed&rdquo; bug into a stale UF2 and found two more underneath it.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 14</span> Is the traffic at least harder to fingerprint?</h3>
+<p><span class="lbl">Proven</span> Ticket 29: DATA padded to a constant 64 bytes before encryption with the real length inside the ciphertext; bounded-jitter decoys; SSID renamed to <code>TMOBILE-1219</code>; BSSID lock in ticket 39.</p>
+<p class="brag"><span class="lbl">Brag</span> Frames all look the same size and idle chatter is shaped. Call it LPI-oriented &mdash; never &ldquo;covert&rdquo;.</p>
+</div>
+
+<div class="claim">
+<h3><span class="num">TEST 15</span> Is the build itself trustworthy?</h3>
+<p><span class="lbl">Proven</span> Ticket 01/02: host suite 18/18, both targets build <code>-Wall -Wextra -Werror</code>, boot banner carries a hash derived from <code>main.c</code>, and a fresh checkout needs no SDK path to run host tests.</p>
+<p class="brag"><span class="lbl">Brag</span> Every log can be tied back to the exact source that produced it. Nothing here is a screenshot of somebody else's build.</p>
+</div>
+
+<h2>Why this is hard on a $5-class part</h2>
+<ul>
+  <li>About 8 KB of stack: mbedTLS Curve25519 overflowed it in an lwIP callback, so ECDH was deferred to the main loop.</li>
+  <li>No RTOS: CYW43 PIO-SPI work, Wi-Fi state, OLED rendering and crypto share one cooperative loop with an 8 s watchdog.</li>
+  <li>Flash writes run with interrupts off; <code>flash_safe_execute()</code> and a full RAM page were needed to avoid a silent hang.</li>
+  <li>The radio stack exposes only normal STA/AP interfaces, so MAC-layer SFO is unavailable; the side channel had to move up a layer.</li>
+  <li>Two boards, one source file, zero warnings, and a host test suite that runs without the SDK installed.</li>
+</ul>
+
+<div class="callout"><strong>Novelty, stated honestly:</strong> we have not found another published two-board PoC on a $5-class microcontroller that combines all of the above. That is our assessment from the work and the sources we have, not an independent market survey. Say &ldquo;we have not seen this combination demonstrated on hardware at this price point&rdquo; &mdash; not &ldquo;the first ever&rdquo;.</div>
+
+<h2>What we do not say yet</h2>
+<ul>
+  <li>&ldquo;Untethered / all-day battery&rdquo; &mdash; tickets 22 and 23 are open.</li>
+  <li>&ldquo;24-hour soak passed&rdquo; &mdash; ticket 21 is running now; verify before claiming.</li>
+  <li>&ldquo;Independently reviewed&rdquo; &mdash; ticket 37 PR pending; machine-assisted is not human review.</li>
+  <li>&ldquo;Covert&rdquo; or &ldquo;MAC-layer SFO&rdquo; &mdash; application layer only; tickets 17 and 29 evidence pending.</li>
+  <li>&ldquo;Secure boot / hardware-locked keys&rdquo; &mdash; ticket 35 research only, OTP untouched.</li>
+  <li>&ldquo;Military-grade crypto&rdquo; or &ldquo;128-bit authentication&rdquo; &mdash; lightweight Speck, 8-byte tag.</li>
+</ul>
+
+<h2>Sources</h2>
+<ul>
+  <li>Full evidence and boundaries: <a href="../lessons/0003-the-claims-ledger.html">Lesson 003, the claims ledger</a>.</li>
+  <li>Board-level status: <a href="../lessons/0004-where-the-project-stands.html">Lesson 004</a>.</li>
+  <li>Primary: <code>.scratch/phantom-link-v1/issues/*.md</code>, <code>logs/capture14/</code>, <code>docs/REVIEW_PACK_37.md</code>.</li>
+</ul>
+<p class="small">Ask me to tighten any line here before you put it in front of a skeptical engineer. [[RESOURCES.md]]</p>
+</body>
+</html>

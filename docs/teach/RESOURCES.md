@@ -2,6 +2,10 @@
 
 ## Knowledge
 
+- [Reference: Proof, then brag](reference/claims-brag-sheet.html)
+  Fifteen plain-English claims in the form &ldquo;Can we prove it? / Proven / Brag&rdquo;.
+  Every brag is bolted to a named test or log. Use for: interview answers,
+  demo narration and release copy &mdash; never as a substitute for the ledger.
 - [Lesson 004: Where the project stands](lessons/0004-where-the-project-stands.html)
   A four-minute status board: 27 closed, 12 open, what each is waiting for, and
   the one sentence you can safely say. Uses the reusable `assets/status.css`.
