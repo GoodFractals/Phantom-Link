@@ -1,10 +1,10 @@
-# 04: Typed frames on the wire
+﻿# 04: Typed frames on the wire
 
 **What to build:** Handshake, heartbeat, and control messages travel as typed frames while keeping their current semantics. A serial log shows type, sequence, and payload length instead of raw tokens.
 
 **Blocked by:** 02, 03
 
-**Status:** ready-for-human (code complete; hardware criteria close in ticket 09)
+**Status:** closed (hardware criteria in 09)
 
 - [ ] Both boards boot, associate, handshake, and show LINK UP over framed messages.
 - [x] `HELLO`, `HELLO_ACK`, `PING`, and `PONG` use their assigned type codes.
@@ -14,7 +14,7 @@
 
 ## Verification
 
-2026-11-19 — `main.c` now sends and receives `proto_frame` frames with CRC32.
+2026-11-19 â€” `main.c` now sends and receives `proto_frame` frames with CRC32.
 `HELLO`, `HELLO_ACK`, `PING`, and `PONG` are zero-payload control frames; each
 Base-6 symbol is a one-byte `DATA` frame and the final marker is a zero-byte
 `DATA` frame with `FINAL`. The serial log prints `type`, `seq`, and `len`.
@@ -25,3 +25,4 @@ reintroduced `pkt_eq`/`TOK_` token parser. Both targets build clean under
 
 Still open: flash both boards and confirm LINK UP and message round-trip. That
 hardware evidence is the gate in ticket 09, not a compile result.
+

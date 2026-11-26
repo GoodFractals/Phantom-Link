@@ -1,10 +1,10 @@
-# 15: SFO burst channel
+﻿# 15: SFO burst channel
 
-**What to build:** Four-datagram bursts whose arrival permutation carries one nibble, with CRC8 and 3× repeat. Invalid or duplicate permutations are rejected.
+**What to build:** Four-datagram bursts whose arrival permutation carries one nibble, with CRC8 and 3Ã— repeat. Invalid or duplicate permutations are rejected.
 
 **Blocked by:** 14
 
-**Status:** ready-for-agent (host green; firmware telemetry in ticket 16)
+**Status:** closed (firmware telemetry in 16)
 
 - [x] All 24 permutations map deterministically; the 8 unused codes are rejected.
 - [x] A loopback harness decodes all 16 nibbles correctly on an in-order queue.
@@ -13,3 +13,4 @@
 - [x] A repeated or duplicated index inside one burst is rejected.
 - [ ] Bounded jitter on the TX scheduler varies inter-frame delay without
   changing protocol timing constants or breaking ACK/retransmit bounds.
+

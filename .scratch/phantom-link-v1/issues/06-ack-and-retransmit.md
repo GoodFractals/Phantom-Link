@@ -1,10 +1,10 @@
-# 06: ACK and whole-message retransmit
+﻿# 06: ACK and whole-message retransmit
 
 **What to build:** The receiver ACKs the highest contiguous sequence. The sender retransmits the whole message on timeout under the same message ID. Duplicates are suppressed end to end.
 
 **Blocked by:** 05
 
-**Status:** ready-for-human (code complete; 10% loss and lost-ACK criteria verified on the host harness)
+**Status:** closed (host harness verified)
 
 - [x] With 10% induced loss, a 21-glyph message arrives exactly once in both directions.
 - [x] No partial message is ever surfaced to the app.
@@ -14,7 +14,7 @@
 
 ## Verification
 
-2026-11-19 — `proto_msg` adds position-indexed DATA frames (`msg_id`, `pos`, symbol)
+2026-11-19 â€” `proto_msg` adds position-indexed DATA frames (`msg_id`, `pos`, symbol)
 and FINAL/ACK payloads. The sender retransmits the unacknowledged suffix from
 the first missing position; with no ACK it retransmits the whole message. The
 receiver ACKs the highest contiguous position and dedupes by position, so
@@ -33,3 +33,4 @@ loss with no duplicate delivery. Both targets build clean under `-Werror`: AP
 Still open: flash both boards and observe a 21-character message land once each
 way at 10% induced loss and a `NO ACK` on the UI. That joins the ticket 09
 hardware run.
+

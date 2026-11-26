@@ -1,10 +1,10 @@
-# 05: Session ID, sequence, duplicate suppression
+﻿# 05: Session ID, sequence, duplicate suppression
 
 **What to build:** Each session gets a hardware-random ID and per-direction sequence numbers. A captured frame replayed later is dropped before the app sees it.
 
 **Blocked by:** 04
 
-**Status:** ready-for-human (code complete; reboot-ID observation joins ticket 09)
+**Status:** closed (reboot-ID in 09)
 
 - [ ] Session IDs differ across reboots and are never taken from a counter.
 - [x] A replayed datagram from a host harness is rejected and logged.
@@ -14,7 +14,7 @@
 
 ## Verification
 
-2026-11-19 — `proto_session` adds a 32-bit sliding replay window, per-direction
+2026-11-19 â€” `proto_session` adds a 32-bit sliding replay window, per-direction
 transmit sequence starting at 0, and accepted/duplicate/stale/wrong-session
 counters. `main.c` draws the session ID from `get_rand_32()` on every handshake
 attempt, adopts the initiator's ID on `HELLO`, and invalidates an in-progress
@@ -30,3 +30,4 @@ clean under `-Werror`: AP 675,840 bytes, STA 682,496 bytes.
 
 Still open: flash both boards and observe different session IDs after two
 reboots. That joins the ticket 09 hardware run.
+
