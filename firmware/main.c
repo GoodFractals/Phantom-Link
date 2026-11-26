@@ -167,7 +167,18 @@ typedef enum { LINK_DOWN = 0, LINK_UP } link_state_t;
 static struct udp_pcb *upcb = NULL;
 static uint8_t psk_tx_key[16];
 static uint8_t psk_rx_key[16];
+/* Ephemeral per-session traffic keys from X25519 + fs_derive_keys. HELLO
+ * confirmation keeps using the static PSK keys; DATA/SFO use these instead.
+ * FS_KEY_BYTES is 32, so keep separate buffers and pick the right suffix in
+ * the suite calls (Speck uses 16, AEAD uses 32). */
+static uint8_t sess_tx_key[FS_KEY_BYTES];
+static uint8_t sess_rx_key[FS_KEY_BYTES];
+static bool sess_keys_ready = false;
+static x25519_ctx_t ecdh_ctx;
+static uint8_t our_pubkey[X25519_KEY_BYTES];
+static bool ecdh_ready = false;
 static uint32_t auth_failures = 0;
+static proto_session_t session;  /* used by derive_session_keys above */
 static uint32_t crypto_errors = 0;
 static uint32_t decoy_tx_count = 0;
 static uint32_t last_decoy_ms = 0;
@@ -294,6 +305,46 @@ static void register_key_secrets(void) {
     keys_cleared = false;
 }
 
+/* Traffic-key selectors: ephemeral session keys once ECDH completes, static
+ * PSK keys before that (and always for HELLO confirmation). */
+static const uint8_t *tx_traffic_key(void) {
+    return sess_keys_ready ? sess_tx_key : psk_tx_key;
+}
+static const uint8_t *rx_traffic_key(void) {
+    return sess_keys_ready ? sess_rx_key : psk_rx_key;
+}
+
+/* Derive ephemeral session keys from our ECDH context and the peer's public
+ * key. Registers the new secrets with the zeroizer. Returns false on failure. */
+static bool derive_session_keys(const uint8_t peer_pub[X25519_KEY_BYTES]) {
+    uint8_t shared[X25519_KEY_BYTES];
+    /* The AP can receive HELLO before it has sent anything, so ensure our
+     * ephemeral keypair exists before deriving. */
+    if (!ecdh_ready) {
+        if (!x25519_gen_keypair(&ecdh_ctx, our_pubkey)) {
+            printf("ECDH keypair generation failed\n");
+            return false;
+        }
+        ecdh_ready = true;
+        zeroize_tracker_register(&zeroizer, ecdh_ctx.opaque,
+                                 sizeof ecdh_ctx.opaque);
+    }
+    if (!x25519_shared_secret(&ecdh_ctx, peer_pub, shared)) return false;
+    {
+        static const uint8_t master_psk[FS_KEY_BYTES] = PHANTOM_PSK_BYTES;
+        fs_derive_keys(master_psk, shared, session.session_id,
+                       (const uint8_t *)"BONNIE-CLYDE-v1",
+                       sizeof("BONNIE-CLYDE-v1") - 1u,
+                       sess_tx_key, sess_rx_key);
+    }
+    memset(shared, 0, sizeof shared);
+    sess_keys_ready = true;
+    zeroize_tracker_register(&zeroizer, sess_tx_key, sizeof sess_tx_key);
+    zeroize_tracker_register(&zeroizer, sess_rx_key, sizeof sess_rx_key);
+    printf("SESSION KEYS derived (X25519)\n");
+    return true;
+}
+
 static void psk_derive_keys(void) {
     static const uint8_t salt[] = "BONNIE-CLYDE-v1";
     static const uint8_t psk[PC_MASTER_KEY_BYTES] = PHANTOM_PSK_BYTES;
@@ -334,7 +385,6 @@ static uint32_t rx_unknown_type = 0;
 static uint32_t rx_bad_payload = 0;
 
 // --- Session and replay state --------------------------------------------------
-static proto_session_t session;
 static uint32_t expected_rx_seq = 0;
 static uint32_t rx_gap = 0;
 static uint32_t rx_out_of_order = 0;
@@ -428,7 +478,7 @@ static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
     if (status == PROTO_OK && type == PROTO_TYPE_DATA) {
         uint8_t nonce[PC_NONCE_BYTES];
         frame_nonce(frame.seq, nonce);
-        active_suite->seal(psk_tx_key, nonce, buf, PROTO_HEADER_LEN,
+        active_suite->seal(tx_traffic_key(), nonce, buf, PROTO_HEADER_LEN,
                            buf + PROTO_HEADER_LEN, payload_len,
                            buf + PROTO_HEADER_LEN + payload_len);
     } else if (status == PROTO_OK) {
@@ -460,7 +510,7 @@ static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
 }
 
 static bool send_control_frame(uint8_t type) {
-    uint8_t payload[PC_CONFIRM_NONCE_BYTES + PC_CONFIRM_TAG_BYTES];
+    uint8_t payload[PC_CONFIRM_NONCE_BYTES + PC_CONFIRM_TAG_BYTES + X25519_KEY_BYTES];
     const ip_addr_t *dst = NULL;
     u16_t port = UDP_PORT;
     err_t err;
@@ -478,16 +528,29 @@ static bool send_control_frame(uint8_t type) {
     }
 
     if (type == PROTO_TYPE_HELLO || type == PROTO_TYPE_HELLO_ACK) {
-        uint32_t lo = get_rand_32(), hi = get_rand_32();
         uint8_t label = (type == PROTO_TYPE_HELLO) ? 0x01u : 0x02u;
         const uint8_t *key = (type == PROTO_TYPE_HELLO) ? psk_tx_key : psk_rx_key;
-        memcpy(payload, &lo, 4u);
-        memcpy(payload + 4u, &hi, 4u);
+        size_t plen = PC_CONFIRM_NONCE_BYTES + PC_CONFIRM_TAG_BYTES +
+                      X25519_KEY_BYTES;
+        /* Ensure we have an ephemeral keypair. The public key doubles as the
+         * confirm nonce, binding the tag to this exact ECDH key. */
+        if (!ecdh_ready) {
+            if (!x25519_gen_keypair(&ecdh_ctx, our_pubkey)) {
+                printf("ECDH keypair generation failed\n");
+                return false;
+            }
+            ecdh_ready = true;
+            zeroize_tracker_register(&zeroizer, ecdh_ctx.opaque,
+                                     sizeof ecdh_ctx.opaque);
+        }
+        memcpy(payload, our_pubkey, PC_CONFIRM_NONCE_BYTES);
         pc_confirm_tag(key, label, session.session_id, session.tx_seq,
                        payload, payload + PC_CONFIRM_NONCE_BYTES);
+        memcpy(payload + PC_CONFIRM_NONCE_BYTES + PC_CONFIRM_TAG_BYTES,
+               our_pubkey, X25519_KEY_BYTES);
 
         err = send_frame_to(dst, port, type, 0, payload,
-                            (uint8_t)sizeof payload, 0);
+                            (uint8_t)plen, 0);
     } else {
         err = send_frame_to(dst, port, type, 0, NULL, 0, 0);
     }
@@ -868,14 +931,17 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
                          u16_t port) {
     note_peer(addr, port);
 
+    uint8_t peer_pub[X25519_KEY_BYTES] = {0};
     if (frame->type == PROTO_TYPE_HELLO ||
         frame->type == PROTO_TYPE_HELLO_ACK) {
         uint8_t label = (frame->type == PROTO_TYPE_HELLO) ? 0x01u : 0x02u;
         const uint8_t *key = (frame->type == PROTO_TYPE_HELLO)
                                  ? psk_rx_key : psk_tx_key;
-        if (frame->payload_len !=
-            (PC_CONFIRM_NONCE_BYTES + PC_CONFIRM_TAG_BYTES) ||
-            !frame->payload ||
+        size_t plen = PC_CONFIRM_NONCE_BYTES + PC_CONFIRM_TAG_BYTES +
+                      X25519_KEY_BYTES;
+        /* The first 8 bytes of the peer's public key are the confirm nonce,
+         * so the tag is bound to the ephemeral key it accompanies. */
+        if (frame->payload_len != plen || !frame->payload ||
             !pc_confirm_check(key, label, frame->session_id, frame->seq,
                               frame->payload,
                               frame->payload + PC_CONFIRM_NONCE_BYTES)) {
@@ -885,6 +951,9 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
                    (unsigned)frame->seq);
             return;
         }
+        memcpy(peer_pub,
+               frame->payload + PC_CONFIRM_NONCE_BYTES + PC_CONFIRM_TAG_BYTES,
+               X25519_KEY_BYTES);
     }
 
     /* HELLO may introduce a new session. Every other frame must match the
@@ -932,6 +1001,13 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
 
     switch (frame->type) {
     case PROTO_TYPE_HELLO:
+        /* Derive ephemeral keys from the peer's public key before replying;
+         * our HELLO_ACK carries our public key so the peer can derive too. */
+        if (sess_keys_ready) { sess_keys_ready = false; }
+        if (!derive_session_keys(peer_pub)) {
+            printf("ECDH derive failed on HELLO\n");
+            break;
+        }
         if (send_control_frame(PROTO_TYPE_HELLO_ACK)) {
             set_link_up("HELLO");
         } else {
@@ -940,6 +1016,11 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
         break;
 
     case PROTO_TYPE_HELLO_ACK:
+        if (sess_keys_ready) { sess_keys_ready = false; }
+        if (!derive_session_keys(peer_pub)) {
+            printf("ECDH derive failed on HELLO_ACK\n");
+            break;
+        }
         set_link_up("HELLO_ACK");
         break;
 
@@ -1110,7 +1191,7 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
         frame_nonce(frame.seq, nonce);
         if (wire_len != PROTO_HEADER_LEN + frame.payload_len + PROTO_AUTH_LEN ||
             active_suite->open(
-                psk_rx_key, nonce, masked_header, PROTO_HEADER_LEN,
+                rx_traffic_key(), nonce, masked_header, PROTO_HEADER_LEN,
                 buf + PROTO_HEADER_LEN, frame.payload_len,
                 buf + PROTO_HEADER_LEN + frame.payload_len) != 0) {
             crypto_errors++;
