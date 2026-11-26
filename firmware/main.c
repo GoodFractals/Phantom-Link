@@ -174,6 +174,7 @@ static uint8_t psk_rx_key[16];
 static uint8_t sess_tx_key[FS_KEY_BYTES];
 static uint8_t sess_rx_key[FS_KEY_BYTES];
 static bool sess_keys_ready = false;
+static bool ecdh_secrets_registered = false;
 static x25519_ctx_t ecdh_ctx;
 static uint8_t our_pubkey[X25519_KEY_BYTES];
 static bool ecdh_ready = false;
@@ -326,8 +327,15 @@ static bool derive_session_keys(const uint8_t peer_pub[X25519_KEY_BYTES]) {
             return false;
         }
         ecdh_ready = true;
+    }
+    /* Register the ECDH/session secrets once. These are static buffers, so
+     * re-registering on every handshake would fill the 16-slot tracker. */
+    if (!ecdh_secrets_registered) {
         zeroize_tracker_register(&zeroizer, ecdh_ctx.opaque,
                                  sizeof ecdh_ctx.opaque);
+        zeroize_tracker_register(&zeroizer, sess_tx_key, sizeof sess_tx_key);
+        zeroize_tracker_register(&zeroizer, sess_rx_key, sizeof sess_rx_key);
+        ecdh_secrets_registered = true;
     }
     if (!x25519_shared_secret(&ecdh_ctx, peer_pub, shared)) return false;
     {
@@ -339,8 +347,6 @@ static bool derive_session_keys(const uint8_t peer_pub[X25519_KEY_BYTES]) {
     }
     memset(shared, 0, sizeof shared);
     sess_keys_ready = true;
-    zeroize_tracker_register(&zeroizer, sess_tx_key, sizeof sess_tx_key);
-    zeroize_tracker_register(&zeroizer, sess_rx_key, sizeof sess_rx_key);
     printf("SESSION KEYS derived (X25519)\n");
     return true;
 }
