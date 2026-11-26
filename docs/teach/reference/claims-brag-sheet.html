@@ -10,12 +10,19 @@
 <body>
 <p class="small">Phantom Link teaching workspace &mdash; reference sheet &mdash; [[MISSION.md]]</p>
 <h1>Proof, then brag</h1>
+<p><strong>Two $5-class boards. One source file. Forward-secret encrypted messaging that a password-less RF sniffer could not read.</strong></p>
+<p><strong>This is not a tutorial project with a README full of adjectives. It is a working radio link that we attacked on air, broke on purpose, caught in the act, and fixed — then proved the fix on the same hardware.</strong> Every word above has a test number below it. Read the proof column and then say the brag column out loud with a straight face.</p>
+<div class="callout"><strong>Receipts, no adjectives:</strong> 73 captured DATA frames, zero plaintext &middot; 20 of 20 restarts recovered &middot; under 8 s watchdog recovery &middot; fresh key every session and every frame &middot; 18/18 host tests under <code>-Werror</code> &middot; three real firmware bugs found and fixed this week.</div>
 <p class="small">Plain English, confident on purpose. Each item says what we tested, how we know, and the sentence you can say out loud. If the proof line is empty, the brag line does not exist.</p>
 
 <div class="callout"><strong>The rule:</strong> we flaunt only what we can reproduce. Nothing here says &ldquo;reviewed&rdquo;, &ldquo;untethered&rdquo;, &ldquo;covert&rdquo; or &ldquo;24-hour soak passed&rdquo; — those gates are still open. Bold claims with a log behind them are fine. Bold claims without one are marketing.</div>
 
 <h2>The 30-second version</h2>
 <p>Two $5-class Pico 2 W boards run one firmware image, each with a working UI. They build a private Wi-Fi link, confirm a shared secret, then throw that secret away for session keys that change every session and every message. We captured the radio with a sniffer that had no password and found zero readable messages. We can tamper with a frame, replay an old one, or use the wrong password — each is rejected and counted. Pull either board's plug and the pair reconnects in under ten seconds, twenty times out of twenty. Hang the firmware on purpose and the watchdog brings it back in under eight. And the boards remember their audit counters through a power cut.</p>
+
+<h2>For the person reading this resume</h2>
+<p>Most portfolios show you a repository. This one shows you a <em>system</em>: two devices, no PC in the middle, running crypto that changes keys faster than you can capture them, logging its own failures, and healing from a deliberate hang. Every impressive sentence here has a number you can click and a log you can read. That is the difference between &ldquo;I implemented AES&rdquo; and &ldquo;here is the RF capture, here is the rejected tamper frame, here is the board that came back after I pulled its plug.&rdquo;</p>
+<p>We also say out loud what we have <em>not</em> done. That is not weakness — it is the posture of someone who has actually shipped something and knows exactly where the edges are.</p>
 
 <h2>The claims, one by one</h2>
 
@@ -35,13 +42,13 @@
 <div class="claim">
 <h3><span class="num">TEST 03</span> Does a stolen config secret unlock old conversations?</h3>
 <p><span class="lbl">Proven</span> Ticket 31: ephemeral X25519 key pair generated per session, ECDH mixed with PSK and session ID, on-device self-test gates LINK UP. Ticket 37 review found scalar reuse and we fixed it; BYE &rarr; re-link verified with a fresh session and <code>wrong=0</code>.</p>
-<p class="brag"><span class="lbl">Brag</span> A leaked setup key cannot decrypt yesterday's traffic. The session key is born and dies with the session.</p>
+<p class="brag"><span class="lbl">Brag</span> Steal the config key and yesterday's conversation is still garbage to you. Every session mints its own key on the device — and when a review caught a case where it didn't, we fixed it and proved the fix.</p>
 </div>
 
 <div class="claim">
 <h3><span class="num">TEST 04</span> Is one message key the whole session?</h3>
 <p><span class="lbl">Proven</span> Ticket 33: per-frame keys from <code>pc_kdf(master, LE32(seq), 0x04)</code>. Hardware probe: STA <code>tx_key=1</code>, AP <code>rx_key=1</code>, zero rollbacks and zero crypto errors; 95 s soak clean.</p>
-<p class="brag"><span class="lbl">Brag</span> Every frame gets its own key. Break one frame and you have learned nothing about the next.</p>
+<p class="brag"><span class="lbl">Brag</span> We don't reuse a traffic key across messages. One frame, one key — break one and the next is a brand new problem.</p>
 </div>
 
 <div class="claim">
@@ -53,7 +60,7 @@
 <div class="claim">
 <h3><span class="num">TEST 06</span> What happens if we flip a bit in a message?</h3>
 <p><span class="lbl">Proven</span> Ticket 14 T16 and 32: hardware tamper probe flips one auth byte; AP rejects it with <code>CRYPTO FAIL: bad tag</code> and increments <code>crypto</code> exactly once. A valid frame immediately after still decrypts.</p>
-<p class="brag"><span class="lbl">Brag</span> Alter a frame in flight and the receiver throws it away, counts it, and carries on. We did it on the actual boards, not just in a simulator.</p>
+<p class="brag"><span class="lbl">Brag</span> Touch one bit of a message in flight and the receiver drops it, counts it, and keeps talking. We did this on real boards over a real radio — not a unit test in a vacuum.</p>
 <p class="say"><span class="lbl">Say</span> &ldquo;Tamper rejected on hardware, one error counted, next frame fine.&rdquo;</p>
 </div>
 
@@ -66,7 +73,7 @@
 <div class="claim">
 <h3><span class="num">TEST 08</span> Can a forged frame break the key schedule?</h3>
 <p><span class="lbl">Proven</span> Ticket 37 review found that RX advanced the ratchet before checking the tag &mdash; a forged high-seq frame could wedge all later frames. Fixed by snapshotting the ratchet and restoring it on any verification failure. Re-verified with valid and tampered probes.</p>
-<p class="brag"><span class="lbl">Brag</span> We did not stop at &ldquo;the tag rejects it&rdquo;. We asked what the rejected frame changed, found a denial-of-service hole, and closed it.</p>
+<p class="brag"><span class="lbl">Brag</span> Most implementations stop when the bad frame is rejected. We asked what that rejected frame <em>changed</em>, found a denial-of-service hole in our own key schedule, and closed it. That is the line between code that passes tests and code you can trust.</p>
 </div>
 
 <div class="claim">
@@ -90,7 +97,7 @@
 <div class="claim">
 <h3><span class="num">TEST 12</span> Can we audit a run after the PC is gone?</h3>
 <p><span class="lbl">Proven</span> Ticket 20: STATUS prints every counter; flash ring writes one 88-byte record per minute; a physical power cycle booted with <code>persist seq=4 valid=1</code> &mdash; <code>valid</code> can only be set by reading a valid record back from flash.</p>
-<p class="brag"><span class="lbl">Brag</span> The boards keep their own logbook. We can read the story of an unattended run after the fact.</p>
+<p class="brag"><span class="lbl">Brag</span> The boards keep their own logbook. Unplug them, wait, plug them back in, and the counters are still there — proved on hardware, not assumed from the SDK docs.</p>
 </div>
 
 <div class="claim">
@@ -108,7 +115,7 @@
 <div class="claim">
 <h3><span class="num">TEST 15</span> Is the build itself trustworthy?</h3>
 <p><span class="lbl">Proven</span> Ticket 01/02: host suite 18/18, both targets build <code>-Wall -Wextra -Werror</code>, boot banner carries a hash derived from <code>main.c</code>, and a fresh checkout needs no SDK path to run host tests.</p>
-<p class="brag"><span class="lbl">Brag</span> Every log can be tied back to the exact source that produced it. Nothing here is a screenshot of somebody else's build.</p>
+<p class="brag"><span class="lbl">Brag</span> Warnings-as-errors, 18 host tests, and a source hash in every boot banner. Nobody has to take our word for which binary produced a log — the log tells you.</p>
 </div>
 
 <h2>Why this is hard on a $5-class part</h2>

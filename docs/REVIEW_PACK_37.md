@@ -14,11 +14,11 @@ pending — PR open."*
 
 | Item | Exact value |
 |---|---|
-| HEAD commit | `6317558b21d8bd4f74764190fbbda5215018b3a2` |
-| HEAD subject | `docs: add per-ticket acceptance-gate section to claims ledger` |
-| `git describe` | `poc/plaintext-v1-102-g6317558` |
-| `firmware/main.c` SHA-256 | `F2B3958331AEB662C7C5840501232F6C6AA43C2C5587947353A559EBB18A758B` |
-| Embedded banner ID | first 8 hex of the above = `f2b39583` |
+| HEAD commit | `3d66f759cd9e8e70f9eaf84562739a4fedf44e68` |
+| HEAD subject | `docs: add proof-then-brag reference sheet with reusable claim cards` |
+| `git describe` | `poc/plaintext-v1-108-g3d66f75` |
+| `firmware/main.c` SHA-256 | `43E8A9347249CAD6597626BD29DA2FB262D3B4CFECBB926E729D2E0BD16C00E2` |
+| Embedded banner ID | first 8 hex of the above = `43e8a934` |
 | Tags | only `poc/plaintext-v1` (old plaintext PoC) — **no review tag yet** |
 | Working tree | clean except untracked `docs/PHANTOM_LINK_DATASHEET.md` (user-owned) |
 
@@ -28,8 +28,8 @@ the shipping artifacts:
 
 | Current local artifact | SHA-256 (probe build) |
 |---|---|
-| `phantom_link_ap.uf2` | `8EBCE68AA8297A184C4461FA8D5CBD77C67AB3DDB76CF803BE4103C330589B89` |
-| `phantom_link_sta.uf2` | `371D33465FFF84A121724860778ABF06D6D0AB6D51ACDB3DBFFA704E3BDAB300` |
+| `phantom_link_ap.uf2` | `859F7E7F0594E9C4E1FAD38AF62246E3633B8F8661B062BCB44DA022B4972789` |
+| `phantom_link_sta.uf2` | `260EF94B46C439B654C12C64AD1DBC57E251A08FFD1F12E6A8A0CB5CB8AD6A2D` |
 
 After the soak finishes: rebuild with `PHANTOM_DATA_PROBE=OFF`, `PHANTOM_USE_AEAD=OFF`,
 `PHANTOM_STATUS_SAVE=ON`, create annotated tag `security-review/37-v1` at the frozen
