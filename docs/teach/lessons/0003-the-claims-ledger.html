@@ -40,7 +40,52 @@
 </table>
 <p class="small">Counts on 2026-11-26: <strong>27 closed</strong>, <strong>12 open</strong> (17, 21&ndash;29, 35, 37). UI tickets 24/25/26/28 are parked, not failed.</p>
 
-<h2>1. Framing, transport and UI &mdash; tickets 01&ndash;09</h2>
+<h2>1. What each ticket asked us to prove</h2>
+<p>Every ticket has an acceptance gate &mdash; the list of things that must be demonstrated before it can close. This is the &ldquo;what we needed to prove&rdquo; view. A checkbox being ticked in source is not the same as the gate passing; the PROVEN column in the next section tells you which gates actually have evidence.</p>
+<table class="ledger"><tr><th>Ticket</th><th>Acceptance gate</th></tr>
+<tr><td>01</td><td>`ctest` placeholder passes; both targets build `-Wall -Wextra -Werror`; regression checklist has at most 12 checks; fresh clone runs host tests without `PICO_SDK_PATH`.</td></tr>
+<tr><td>02</td><td>Banner appears before any Wi-Fi line on both boards; carries version + short build hash; hash changes with `main.c` and is stable across rebuilds; absent from the UI.</td></tr>
+<tr><td>03</td><td>Payload 0&ndash;64 round-trips; every truncated prefix rejected; 100k random buffers safe; distinct codes for bad magic/version/length/CRC; no SDK dependency.</td></tr>
+<tr><td>04</td><td>Both boards boot, associate, handshake and show LINK UP; assigned type codes; unknown type dropped and counted; baseline checklist still passes; no raw token parsing.</td></tr>
+<tr><td>05</td><td>Session IDs differ across reboots, never a counter; replayed datagram rejected and logged; out-of-order inside the window is safe; separate counters; new session resets sequence state.</td></tr>
+<tr><td>06</td><td>With 10% induced loss a 21-glyph message arrives exactly once in both directions; no partial message; bounded retries with UI failure; bounded memory; lost ACK does not duplicate.</td></tr>
+<tr><td>07</td><td>DELETE mid-send aborts and the receiver never assembles it; UI stays responsive; clean second send; non-blocking check passes; bounded queue with overflow reported; delivered clears the draft.</td></tr>
+<tr><td>08</td><td>`BYE` moves the peer to NO LINK within one heartbeat; power-cycle still times out; reason logged both sides; new handshake accepted after BYE; 2.5 s two-button chord.</td></tr>
+<tr><td>09</td><td>T2&ndash;T6 pass on hardware; T7&ndash;T12 with both serial logs; replay rejected with zero accepted; OLED photos; first failing test reported; both UF2 hashes recorded.</td></tr>
+<tr><td>10</td><td>Published Speck128 KATs; RFC 4493 CMAC vectors; different send/receive keys; AEAD slot exposed; failed boot self-test blocks LINK UP; compiles for host and firmware.</td></tr>
+<tr><td>11</td><td>Same PSK confirms; different PSK reaches `AUTH FAILED`; missing or malformed tag counted; PSK override documented; replayed confirmation tag rejected.</td></tr>
+<tr><td>12</td><td>Logs show ciphertext length only; tampered tag drops the frame and increments `crypto`; decryption failure never surfaces partial text; 21-glyph both ways; nonce cannot repeat in a session.</td></tr>
+<tr><td>13</td><td>10k replays accepted zero times; every single-bit flip in header/payload/tag rejected; far-out sequence rejected; distinct replay/tamper/malformed counters; a valid frame after a rejected one passes.</td></tr>
+<tr><td>14</td><td>T2&ndash;T12 on both boards; T15 replay `stale`; T16 tamper `CRYPTO FAIL`; T17 wrong PSK `AUTH FAILED`; packet capture contains no readable text; logs archived with hashes; `poc/plaintext-v1` builds.</td></tr>
+<tr><td>15</td><td>24 permutations map deterministically and 8 unused codes rejected; loopback decodes all 16 nibbles; CRC8 catches corruption; three repeats resolve by majority; duplicate index inside one burst rejected.</td></tr>
+<tr><td>16</td><td>Serial reports good/total, bits/s and reorder rate; `SFO_DISABLED` changes nothing about delivery; failure logged as `SFO degraded`; read-only counters; SFO failure never blocks a message; decoy generator present.</td></tr>
+<tr><td>17</td><td>Three distances with at least 100 bursts each; table committed; worst result reported, not just the best; demo distance chosen; conditions affecting rate noted.</td></tr>
+<tr><td>18</td><td>Host reconnect state machine with bounded backoff; AP restart re-links under 10 s; STA restart clean; 10 power cycles all recover; backoff logged; stale session rejected; epochs adopted.</td></tr>
+<tr><td>19</td><td>Watchdog armed after bring-up at 8 s; reset reason logged; forced-hang build; hardware resets in under 8 s and re-links; 1 h normal run never trips; long blocking work handled.</td></tr>
+<tr><td>20</td><td>STATUS prints every required field; counters saved to a 16-slot flash ring and survive a power cycle; writes bounded to one page/minute; corrupt record falls back to zero; readable with no console.</td></tr>
+<tr><td>21</td><td>24 h with a message every 5 min, zero resets and zero wedged sends; memory and counters bounded; power pulled mid-TX still recoverable; persisted counters tell the story; any reset explained.</td></tr>
+<tr><td>22</td><td>Both rigs run with no PC and the cable survives a tug; current table for idle/RX/TX/radio-save; 1 h idle with no auto-cutoff; runtime within 20% of projection; packs marked.</td></tr>
+<tr><td>23</td><td>Both units boot and link in under 5 s untethered; a 21-glyph encrypted message round-trips both ways; T23 and T24 pass; pack LEDs checked; run repeated once.</td></tr>
+<tr><td>24</td><td>No magic coordinates; dead UI elements and handlers removed; `BAT:` cell truthful; both pages render on hardware; no protocol module or timing constant touched.</td></tr>
+<tr><td>25</td><td>`LINK`/`NO LINK` reflect real session state; lock glyph only after key confirmation; long-press legend; splash shows version and role for 2.5 s and is skippable; no protocol or timing touched.</td></tr>
+<tr><td>26</td><td>Both pages readable at arm&rsquo;s length in photos; one label weight and punctuation style; no clipped text; photos committed with build hash; art/layout only.</td></tr>
+<tr><td>27</td><td>Audit claims match shipped artifacts and hashes; protocol note covers frame, key schedule and SFO caveat; demo shows boot, link, encrypted send both ways, tamper and SFO with no cuts; builds clean; next-context prompt current.</td></tr>
+<tr><td>28</td><td>`LINK UP` and `NO LINK` use visibly different indicators; unlinked state photographed with the peer powered off; distinguishable at arm&rsquo;s length; HUD art only.</td></tr>
+<tr><td>29</td><td>DATA always 64-byte padded; padding random with real length inside ciphertext; bounded-jitter decoys; decoys never inflate `msgdrop`; SSID renamed; TX power investigated; header fields masked; sniffer report produced.</td></tr>
+<tr><td>30</td><td>GitHub CLI grant revoked; local re-auth; MCP header updated; `get_me` returns `GoodFractals`; `git push` works; no old token in config, history or files.</td></tr>
+<tr><td>31</td><td>Host KDF/epoch layer with RFC 7748 KAT; ephemeral public keys in HELLO/HELLO_ACK; ECDH-derived traffic keys; session ID in salt; captured session not decryptable with a later PSK; self-test gates LINK UP; host builds under `-Werror`.</td></tr>
+<tr><td>32</td><td>RFC 8439 KATs; suite-ops interface; 18-byte header as AAD; verify-before-decrypt and constant-time compare; exhaustive single-bit tamper; adapter and compile-time select; wire unchanged; hardware build flashed and tamper verified.</td></tr>
+<tr><td>33</td><td>Host ratchet with KAT vectors and rollback rejection; key evolution binds message ID; out-of-order window including uint32 wrap; RAM-only state; no wire-length or timing change.</td></tr>
+<tr><td>34</td><td>Encrypted-header envelope documented; receiver decrypts before session/replay processing; AAD covers clear fields only; replay rejection compatible; host tests for tamper, wrong key, wrong seq and sentinel-unchanged-on-failure.</td></tr>
+<tr><td>35</td><td>Document RP2350 OTP secure-boot and debug-disable; evaluate flash encryption and key storage; protect against `picotool save`; reversible dev and irreversible production paths; spare board only; record which mitigations stop a wrench attack.</td></tr>
+<tr><td>36</td><td>Zeroize derived keys, PSK copies, ECDH state and nonce buffers on BYE; watchdog/brownout best-effort (reclassified as unachievable on RP2350); no retained RAM test (reclassified); future logger stores no secrets; host tests; firmware wiring.</td></tr>
+<tr><td>37</td><td>Freeze a tagged build; give the reviewer threat model, ADRs, frame spec and source; answer specific review questions; publish findings and remediate critical/high; datasheet may say &ldquo;reviewed&rdquo; only after completion.</td></tr>
+<tr><td>38</td><td>Document that possession defeats PSK and flash readout; evaluate tamper seals, enclosure switches and fingerprint modules; reject security theater with reasoning; recommend the smallest honest control set; feed datasheet Limitations.</td></tr>
+<tr><td>39</td><td>Modular config; AP prints BSSID; STA falls back to SSID-only join; runtime mismatch logs, counts and disconnects; enrolled BSSID; clean power-cycle link with lock active; provisioning script verified.</td></tr>
+</table>
+<p class="small">Two gates were impossible as originally written and were reclassified rather than faked: ticket 36&rsquo;s watchdog/brownout RAM wipe (RP2350 has no pre-reset callback) and ticket 20&rsquo;s first &ldquo;verified fixed&rdquo; result (a stale UF2). Both are recorded in their tickets.</p>
+
+<h2>2. Framing, transport and UI &mdash; tickets 01&ndash;09</h2>
 <table class="ledger">
   <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
   <tr><td>01</td><td><span class="badge ok">CLOSED</span></td><td>Host suite runs on Windows with no board; 18/18 `ctest`; both targets build `-Wall -Wextra -Werror`; fresh checkout needs no `PICO_SDK_PATH`.</td><td class="derived">Verification is reproducible, not a one-off on the author's machine.</td><td>Host green is not hardware acceptance; that is 09/14.</td></tr>
@@ -54,7 +99,7 @@
   <tr><td>09</td><td><span class="badge ok">CLOSED</span></td><td>T2&ndash;T12 pass on hardware build `e4fadca7`; replay rejected with zero accepted; OLED photos show LINK UP and both pages; UF2 hashes archived with logs.</td><td class="derived">The framing design works on real silicon and real radios, not just the host.</td><td>This is the plaintext-era baseline; crypto acceptance is ticket 14.</td></tr>
 </table>
 
-<h2>2. Crypto primitives, handshake and hardware acceptance &mdash; tickets 10&ndash;14</h2>
+<h2>3. Crypto primitives, handshake and hardware acceptance &mdash; tickets 10&ndash;14</h2>
 <table class="ledger">
   <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
   <tr><td>10</td><td><span class="badge ok">CLOSED</span></td><td>Published Speck128/128 KATs; RFC 4493 CMAC vectors; separate directional keys from one session; boot self-test blocks LINK UP on failure (`CRYPTO FAIL`).</td><td class="derived">Primitives are checked against published vectors rather than trusted by inspection.</td><td>Speck is a lightweight cipher chosen for this MCU &mdash; never call it "military-grade" or NIST-approved.</td></tr>
@@ -64,7 +109,7 @@
   <tr><td>14</td><td><span class="badge ok">CLOSED</span></td><td>Hardware T2&ndash;T12 on `3b666adb`; T15 replay `stale`, zero accepted; T16 tamper `CRYPTO FAIL: bad tag`; T17 wrong PSK `AUTH FAILED`, no LINK UP; pktmon and ESP32 no-PSK RF capture: 73 AP DATA frames, zero plaintext hits; logs archived.</td><td class="derived">A passive RF observer with no credentials cannot read message text &mdash; and the project has the capture to show it, not just an assertion.</td><td>SFO here is application-layer telemetry only: no MAC-layer SFO or covert-channel claim. The v1 PSK residual risk is 38, mitigated for old traffic by 31.</td></tr>
 </table>
 
-<h2>3. SFO, LPI and field measurement &mdash; tickets 15&ndash;17, 29</h2>
+<h2>4. SFO, LPI and field measurement &mdash; tickets 15&ndash;17, 29</h2>
 <table class="ledger">
   <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
   <tr><td>15</td><td><span class="badge ok">CLOSED</span></td><td>24 permutations map deterministically, 8 unused codes rejected; loopback decodes all 16 nibbles; CRC8 catches corruption; three repeats resolve by majority; duplicate index in one burst rejected.</td><td class="derived">A small side channel works on the real transport without touching message data.</td><td>Bounded-jitter scheduler checkbox is not measured here (29/22).</td></tr>
@@ -73,7 +118,7 @@
   <tr><td>29</td><td><span class="badge todo">OPEN</span></td><td>DATA always 64-byte padded; random padding with real length inside ciphertext; bounded-jitter decoys; decoys never inflate `msgdrop`; SSID `TMOBILE-1219`; header fields masked with a key-derived stream (now ECDH-derived via 34); no CYW43 TX-power API in SDK 2.3.1.</td><td class="derived">Constant-length frames and camouflaged naming remove trivial traffic fingerprints.</td><td>Application layer only &mdash; no MAC-layer SFO/covert claim. Sniffer detection report (17) open; airtime/power (22) open.</td></tr>
 </table>
 
-<h2>4. Resilience, watchdog and untethered operation &mdash; tickets 18&ndash;23</h2>
+<h2>5. Resilience, watchdog and untethered operation &mdash; tickets 18&ndash;23</h2>
 <table class="ledger">
   <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
   <tr><td>18</td><td><span class="badge ok">CLOSED</span></td><td>10/10 AP restarts and 10/10 STA restarts re-linked in &lt;10 s with fresh sessions; host state machine 12 cases; bounded backoff logged; session epochs adopted; stale session rejected.</td><td class="derived">The pair self-heals after either board reboots, without operator intervention.</td><td>Deliberate `RECONNECTING` HUD state is parked UI work (25).</td></tr>
@@ -84,7 +129,7 @@
   <tr><td>23</td><td><span class="badge todo">OPEN</span></td><td>None yet.</td><td class="derived">No marketable claim.</td><td>Do not claim untethered boot/link or repeated pack runs.</td></tr>
 </table>
 
-<h2>5. Crypto hardening wave &mdash; tickets 31&ndash;36, 38&ndash;39</h2>
+<h2>6. Crypto hardening wave &mdash; tickets 31&ndash;36, 38&ndash;39</h2>
 <table class="ledger">
   <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
   <tr><td>31</td><td><span class="badge ok">CLOSED</span></td><td>Ephemeral X25519 public keys in HELLO/HELLO_ACK (16&rarr;48-byte payload); ECDH-derived directional traffic keys; session ID in KDF salt; `x25519_selftest()` gates LINK UP; hardware LINK UP with zero auth/crypto errors.</td><td class="derived">A recorded session cannot be decrypted with a later PSK compromise &mdash; forward secrecy is real on the device.</td><td>PSK still bootstraps and authenticates the handshake. Live impersonation by a PSK holder is not prevented.</td></tr>
@@ -97,7 +142,7 @@
   <tr><td>39</td><td><span class="badge ok">CLOSED</span></td><td>AP prints its BSSID; STA locks to `88:a2:9e:5b:ff:69`, verifies at runtime, logs `BSSID MISMATCH`, increments counter and disconnects; clean power-cycle link with lock active; provisioning script verified statically.</td><td class="derived">An impostor cloning only the SSID and password cannot take the STA.</td><td>BSSID is a configurable identifier, not a cryptographic identity; it can be spoofed by a determined attacker.</td></tr>
 </table>
 
-<h2>6. Proof, process and UI &mdash; tickets 24&ndash;30, 37</h2>
+<h2>7. Proof, process and UI &mdash; tickets 24&ndash;30, 37</h2>
 <table class="ledger">
   <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
   <tr><td>24&ndash;28</td><td><span class="badge todo">OPEN / PARKED</span></td><td>UI art/layout work only.</td><td class="derived">None of these are product claims today.</td><td>Do not claim link-truth HUD, help legend, splash, legibility pass, demo video, or a visual link-state reference.</td></tr>
@@ -106,7 +151,7 @@
   <tr><td>37</td><td><span class="badge todo">OPEN</span></td><td>None yet (freeze, reviewer pack, findings, remediation all outstanding).</td><td class="derived">No marketable claim.</td><td><strong>The datasheet may say "reviewed" only after this completes.</strong> Do not imply independent validation.</td></tr>
 </table>
 
-<h2>7. Sentences you can safely say out loud</h2>
+<h2>8. Sentences you can safely say out loud</h2>
 <p>Each line below is assembled only from <span class="badge ok">PROVEN</span> rows. Keep the ticket numbers in parentheses when you write them down.</p>
 <ul>
   <li>"Two Pico 2 W boards run one firmware source, with a full UI, input path and codec on <em>both</em> boards; `IS_AP` selects only the Wi-Fi role." (01&ndash;09)</li>
@@ -122,7 +167,7 @@
   <li>"STATUS counters persist to flash at one record per minute and survive a power cycle." (20)</li>
 </ul>
 
-<h2>8. Sentences you must not say</h2>
+<h2>9. Sentences you must not say</h2>
 <div class="callout">
   <strong>"Untethered / all-day battery operation."</strong> Tickets 22 and 23 are open. Say "cable-connected PoC; power-rig validation planned".<br>
   <strong>"24-hour soak passed" / "zero leaks over a day."</strong> Ticket 21 is open. Only short soaks (95 s, 1 h) are proven.<br>
@@ -133,7 +178,7 @@
   <strong>"Covert, undetectable traffic."</strong> Ticket 29 reduces trivial fingerprints; tickets 17 and 22 (sniffer report and airtime cost) are open.
 </div>
 
-<h2>9. Test yourself</h2>
+<h2>10. Test yourself</h2>
 <div class="quiz"><strong>Ticket 20 showed `persist seq=1 valid=1` after 70 s. Why was that not enough to close it?</strong><br>
 <span class="answer">A write happening once is a mechanism proof, not a persistence proof. The acceptance criterion is reading the record back after a reboot. Closing it required a physical power cycle and seeing `valid=1` on boot — which can only be set by `status_load()` finding a valid CRC on flash.</span></div>
 <div class="quiz"><strong>Why did the first flash fix produce `persist seq=4466` after 70 s?</strong><br>
@@ -147,7 +192,7 @@
 <div class="quiz"><strong>Which single ticket would let us claim "reviewed design"?</strong><br>
 <span class="answer">37. It is open. Until a reviewer actually completes the pack and findings are published, the datasheet must not use that word.</span></div>
 
-<h2>10. Sources in this repo</h2>
+<h2>11. Sources in this repo</h2>
 <ul>
   <li>Ticket files and evidence: <code>.scratch/phantom-link-v1/issues/*.md</code> (01&ndash;39).</li>
   <li>Ticket 14 RF evidence: <code>logs/capture14/capture14_20261125_rf_evidence.md</code> &mdash; 73 AP DATA frames, zero plaintext hits.</li>
