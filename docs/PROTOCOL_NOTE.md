@@ -10,7 +10,7 @@ Both boards type, render, send, and receive.
 | 0 | 2 | Magic `B`,`C` |
 | 2 | 1 | Version = 1 |
 | 3 | 1 | Type (HELLO, HELLO_ACK, DATA, ACK, PING, PONG, BYE, SFO, ERROR) |
-| 4 | 1 | Flags (ACK_REQ, ENCRYPTED, FINAL, SFO_SYNC) |
+| 4 | 1 | Flags (ACK_REQ, ENCRYPTED, FINAL, SFO_SYNC, EPH_MASK) |
 | 5 | 1 | Payload length (0–64) |
 | 6 | 4 | Session ID, little-endian |
 | 10 | 4 | Sequence, little-endian |
@@ -42,17 +42,31 @@ password, and enrolled AP BSSID.
 
 - KDF: CMAC-based (SP 800-108 style), role-based directional keys. Label
   `0x01` = AP→STA, `0x02` = STA→AP; both boards derive the same key per direction.
-- Session-ID and ECDH values are bound into the salt by the forward-secrecy
-  layer to prevent cross-session keystream reuse.
-- Encryption: Speck128/128 CTR, nonce `0x01 || seq(4) || 0^7`, 32 rounds.
-- Authentication: RFC 4493 CMAC, truncated to the first 8 bytes (MSB-first),
-  over the 18-byte header as AAD plus the ciphertext. Verify before decrypt;
-  constant-time tag compare; failure increments `crypto` and drops the frame.
-- HELLO/HELLO_ACK carry an 8-byte nonce + 8-byte confirmation tag bound to
-  session ID, sequence, nonce, and direction label. Wrong PSK → `AUTH FAILED`.
-- Header fields (session/seq/ack) are XOR-masked with a key-derived stream;
-  this is obfuscation, not encryption. An AEAD suite slot is reserved but
-  ChaCha20-Poly1305 is not wired in v1.
+- **Forward secrecy (shipped):** HELLO/HELLO_ACK carry a fresh X25519 public key
+  each session. `fs_derive_keys()` mixes the ECDH shared secret with the PSK and
+  `session_id` to produce the directional traffic keys. A later PSK compromise
+  cannot decrypt recorded sessions. On-device `x25519_selftest()` gates LINK UP.
+- **Per-frame ratchet (shipped):** each DATA frame key is
+  `pc_kdf(master, LE32(seq), label 0x04)`, with an 8-slot wrap-aware window for
+  out-of-order delivery. RX snapshots ratchet state and restores it if tag
+  verification fails, so a forged frame cannot slide the tip.
+- Encryption: Speck128/128 CTR, nonce `0x01 || seq(4) || 0^7`, 32 rounds. A
+  ChaCha20-Poly1305 suite is a verified compile-time opt-in
+  (`PHANTOM_USE_AEAD`); Speck remains the default.
+- Authentication: RFC 4493 CMAC (or Poly1305 in the AEAD build), truncated to
+  the first 8 bytes (MSB-first), over the 18-byte header as AAD plus the
+  ciphertext. Verify before decrypt; constant-time tag compare; failure
+  increments `crypto` and drops the frame. Forgery bound is `2^-64`, not 128-bit.
+- HELLO/HELLO_ACK carry the first 8 bytes of the public key as a nonce plus an
+  8-byte confirmation tag bound to session ID, sequence, nonce and direction.
+  The remaining 24 public-key bytes are implicitly authenticated by the DATA
+  tag, not MAC-bound here. Wrong PSK → `AUTH FAILED`.
+- Header fields (session/seq/ack) are CTR-masked with ECDH-derived,
+  domain-separated keys after the handshake; HELLO/HELLO_ACK keep the PSK mask
+  because the peer has no ECDH keys yet. A clear-prefix flag selects the key.
+  This is masking, not a second AEAD tag: type, length and timing stay visible,
+  and the mask keystream repeats within a session. The `proto_hdr` envelope is
+  host code, not on the wire.
 
 ## 4. Identity and SFO caveat
 
@@ -69,7 +83,10 @@ content and never gates delivery; failed bursts log `SFO degraded`.
 
 ## 5. Claims we do not make
 
-No MAC-layer SFO, no covertness, no forward secrecy in the shipped v1 crypto
-(forward-secrecy modules are host-green but not device-integrated), no secure
-element, no independent audit, and no protection against physical possession
-or coercion. See ticket 38's Limitations text.
+No MAC-layer SFO, no covertness, no full public-key binding in the confirm tag,
+no separate AEAD tag on the header, no secure element, no OTP/secure boot, no
+independent human review, and no protection against physical possession or
+coercion. Untethered runtime and the 24 h soak are separate open gates. The PSK
+remains extractable by anyone with flash access; forward secrecy only removes
+*recorded-history* damage, not live impersonation by a PSK holder. See ticket
+38's Limitations text and the claims ledger.
