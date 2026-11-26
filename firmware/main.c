@@ -2237,6 +2237,16 @@ int main(void) {
         if (ch == 'S' || ch == 's') status_dump();
         if (ch == 'Z' || ch == 'z') request_teardown("serial-test");
         if (ch == 'B' || ch == 'b') bootsel_command(now);
+#ifdef PHANTOM_DATA_PROBE
+        // 'T' injects a short message through the real DATA/ratchet TX path
+        // so the per-frame key derivation can be verified on hardware.
+        if (ch == 'T' || ch == 't') {
+            static const uint8_t probe[] = {0x01u, 0x00u, 0x41u, 0x42u};
+            printf("DATA probe: %s\n",
+                   send_data_frame(probe, sizeof probe, PROTO_FLAG_FINAL)
+                       ? "sent" : "failed");
+        }
+#endif
 
         LOOP_DONE("wifi");
         wifi_service(now);
