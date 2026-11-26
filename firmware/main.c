@@ -357,17 +357,28 @@ static void register_key_secrets(void) {
 
 /* Derive ephemeral session keys from our ECDH context and the peer's public
  * key. Registers the new secrets with the zeroizer. Returns false on failure. */
+/* Ticket 37 review finding: a fresh X25519 scalar for EVERY session, not one
+ * reused until teardown. mbedTLS keeps the private scalar's limbs on the heap,
+ * so clear the old context first — zeroize_tracker_clear_all() wipes struct
+ * bytes but does not free the limbs. */
+static void ecdh_new_session_keypair(void) {
+    x25519_clear(&ecdh_ctx);
+    memset(our_pubkey, 0, sizeof our_pubkey);
+    ecdh_ready = false;
+    if (!x25519_gen_keypair(&ecdh_ctx, our_pubkey)) {
+        printf("ECDH keypair generation failed\n");
+        return;
+    }
+    ecdh_ready = true;
+}
+
 static bool derive_session_keys(const uint8_t peer_pub[X25519_KEY_BYTES]) {
     uint8_t shared[X25519_KEY_BYTES];
-    /* The AP can receive HELLO before it has sent anything, so ensure our
-     * ephemeral keypair exists before deriving. */
-    if (!ecdh_ready) {
-        if (!x25519_gen_keypair(&ecdh_ctx, our_pubkey)) {
-            printf("ECDH keypair generation failed\n");
-            return false;
-        }
-        ecdh_ready = true;
-    }
+    /* HELLO_ACK already sent our public key for this session, so do NOT
+     * regenerate here — that would invalidate the key the peer is using.
+     * Freshness is enforced by adopt_session() clearing ecdh_ready. */
+    if (!ecdh_ready) ecdh_new_session_keypair();
+    if (!ecdh_ready) return false;
     /* Register the ECDH/session secrets once. These are static buffers, so
      * re-registering on every handshake would fill the 16-slot tracker. */
     if (!ecdh_secrets_registered) {
@@ -637,17 +648,11 @@ static bool send_control_frame(uint8_t type) {
         const uint8_t *key = (type == PROTO_TYPE_HELLO) ? psk_tx_key : psk_rx_key;
         size_t plen = PC_CONFIRM_NONCE_BYTES + PC_CONFIRM_TAG_BYTES +
                       X25519_KEY_BYTES;
-        /* Ensure we have an ephemeral keypair. The public key doubles as the
-         * confirm nonce, binding the tag to this exact ECDH key. */
-        if (!ecdh_ready) {
-            if (!x25519_gen_keypair(&ecdh_ctx, our_pubkey)) {
-                printf("ECDH keypair generation failed\n");
-                return false;
-            }
-            ecdh_ready = true;
-            zeroize_tracker_register(&zeroizer, ecdh_ctx.opaque,
-                                     sizeof ecdh_ctx.opaque);
-        }
+        /* Fresh ephemeral keypair for this session. Only the first 8 bytes of
+         * the public key are the confirm nonce; the full key is appended and
+         * is implicitly authenticated by the DATA tag, not MACed here. */
+        ecdh_new_session_keypair();
+        if (!ecdh_ready) return false;
         memcpy(payload, our_pubkey, PC_CONFIRM_NONCE_BYTES);
         pc_confirm_tag(key, label, session.session_id, session.tx_seq,
                        payload, payload + PC_CONFIRM_NONCE_BYTES);
@@ -774,6 +779,11 @@ static void set_link_down(const char *why) {
 static void adopt_session(uint32_t id, const char *why) {
     uint32_t old = session.session_id;
 
+    /* Ticket 37 review finding: a new session must get a new X25519 scalar.
+     * The next HELLO / HELLO_ACK will generate it. */
+    x25519_clear(&ecdh_ctx);
+    ecdh_ready = false;
+
     proto_session_init(&session, id);
     expected_rx_seq = 0;
     proto_msg_rx_reset(&rx_msg);
@@ -811,6 +821,9 @@ static void request_teardown(const char *reason) {
         printf("BYE send failed\n");
     }
     set_link_down("BYE");
+    /* Free mbedTLS heap limbs BEFORE the tracker wipes the struct, otherwise
+     * x25519_clear() sees a zeroed 'ready' flag and leaks them. */
+    x25519_clear(&ecdh_ctx);
     zeroize_tracker_clear_all(&zeroizer);
     keys_cleared = true;
     /* The tracker just wiped these buffers; invalidate their state flags so
@@ -1075,6 +1088,13 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
     uint8_t peer_pub[X25519_KEY_BYTES] = {0};
     if (frame->type == PROTO_TYPE_HELLO ||
         frame->type == PROTO_TYPE_HELLO_ACK) {
+        /* After BYE the PSK role keys were wiped. The AP has no
+         * begin_handshake(), so restore them here BEFORE checking the confirm
+         * tag — otherwise no pair can ever re-link without a reboot. */
+        if (keys_cleared) {
+            psk_derive_keys();
+            register_key_secrets();
+        }
         uint8_t label = (frame->type == PROTO_TYPE_HELLO) ? 0x01u : 0x02u;
         const uint8_t *key = (frame->type == PROTO_TYPE_HELLO)
                                  ? psk_rx_key : psk_tx_key;
@@ -1178,6 +1198,7 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
         // Mirror the initiator's teardown: clear secrets on this side too.
         // set_link_down deliberately does not zeroize when called from
         // wifi_service on a transient outage, so do it explicitly for BYE.
+        x25519_clear(&ecdh_ctx);
         zeroize_tracker_clear_all(&zeroizer);
         keys_cleared = true;
         ecdh_ready = false;
@@ -1331,14 +1352,20 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
          * seq from the (unmasked) header. Out-of-order frames inside the
          * 8-slot window resolve to their cached key; rollbacks are rejected. */
         uint8_t frame_key[PC_DERIVED_KEY_BYTES];
+        /* Ticket 37 review finding: ratchet_advance() mutates the tip/window.
+         * Snapshot it so a forged high-seq frame with a bad tag cannot slide
+         * the tip and wedge every later legitimate frame (DoS). */
+        ratchet_t rx_before = rx_ratchet;
         bool ratchet_ok = ratchets_ready &&
             ratchet_advance(&rx_ratchet, frame.seq, frame_key);
-        if (!ratchet_ok ||
-            wire_len != PROTO_HEADER_LEN + frame.payload_len + PROTO_AUTH_LEN ||
+        bool opened = ratchet_ok &&
+            wire_len == PROTO_HEADER_LEN + frame.payload_len + PROTO_AUTH_LEN &&
             active_suite->open(
                 frame_key, nonce, masked_header, PROTO_HEADER_LEN,
                 buf + PROTO_HEADER_LEN, frame.payload_len,
-                buf + PROTO_HEADER_LEN + frame.payload_len) != 0) {
+                buf + PROTO_HEADER_LEN + frame.payload_len) == 0;
+        if (!opened) {
+            rx_ratchet = rx_before;   /* discard unauthenticated state change */
             memset(frame_key, 0, sizeof frame_key);
             crypto_errors++;
             printf("CRYPTO FAIL: bad tag (%u bytes) ratchet=%d\n",
