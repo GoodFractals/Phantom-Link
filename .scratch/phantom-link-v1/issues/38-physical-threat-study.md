@@ -108,8 +108,12 @@ cost, and should not be implemented or claimed:
    flash; provision out of band and rotate after any loss of physical custody.
    This is the only control that meaningfully addresses device theft.
 2. **Finish ticket 36 properly.** Zeroize derived keys, PSK copies, ECDH state
-   and nonce buffers on BYE and best-effort on brownout/watchdog; assert it in
-   host tests and on cold/warm hardware resets. Verify no secret is logged.
+    and nonce buffers on BYE (verified on hardware). On RP2350 there is **no
+    watchdog warning interrupt / pre-reset callback** (register block has only
+    CTRL/LOAD/REASON/SCRATCH), so watchdog and brownout RAM wipes are not
+    achievable on this hardware — record as accepted residual risk, not tests.
+    Assert the achievable paths in host tests and on hardware resets. Verify no
+    secret is logged.
 3. **Document the wrench attack as an accepted residual risk** in the datasheet
    Limitations section: possession or coercion of an operator with the PSK
    defeats device-side controls; the protocol is designed to protect the link,
@@ -132,7 +136,9 @@ cost, and should not be implemented or claimed:
 > obtain live keys or the PSK regardless of link-layer cryptography. Firmware
 > and any provisioned secrets are stored in plaintext external flash in the
 > v1 build and can be read with `picotool save` or an external flash
-> programmer. RAM zeroization on link teardown is best-effort. RP2350 secure
+> programmer. RAM zeroization on link teardown is verified; zeroization on
+> watchdog or brownout reset is not possible on RP2350 (no pre-reset callback),
+> so a seized powered board may retain keys in SRAM. RP2350 secure
 > boot, debug disable and encrypted boot are not enabled; they are irreversible
 > OTP changes and, per public fault-injection research, raise attacker cost
 > rather than eliminate it. Lost or out-of-sight boards must be considered

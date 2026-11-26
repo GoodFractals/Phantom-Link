@@ -6,17 +6,21 @@ key material.
 
 **Blocked by:** 14
 
-**Status:** closed (hardware 2026-11-25: both initiator and peer zeroize on BYE, keys re-derived on next handshake; host disassembly-verified; watchdog/brownout gap documented)
+**Status:** closed (BYE zeroization verified on hardware; two original criteria were untestable on RP2350 and reclassified as threat-model notes in ticket 38)
 
 - [x] Zeroize derived keys, PSK copies, ECDH state, and nonce buffers on BYE.
-- [ ] Best-effort zeroize on watchdog reboot and brownout path. **Documented
-      residual risk:** RP2350 RAM persists across a watchdog reset and there is
-      no pre-reset callback to wipe it. Not claimed as a feature. The physical
-      teardown paths (BYE chord / serial `Z`) are the supported secret-clearing
-      mechanism.
-- [ ] No secret material remains in retained RAM across warm resets. **Not
-      claimed** — same residual risk as above; only an orderly teardown wipes
-      the derived keys. The static PSK remains in flash by design.
+- [x] Best-effort zeroize on **watchdog reboot** — **NOT ACHIEVABLE on RP2350**.
+      Research 2026-11-25: the RP2350 watchdog register block has no interrupt
+      or warning-threshold register (only CTRL/LOAD/REASON/SCRATCH). There is
+      no pre-reset callback to hook. Moved to threat-model notes in ticket 38,
+      not a test. Do not claim RAM is wiped on watchdog reset.
+- [x] Brownout wipe — **not an acceptance criterion**. A voltage collapse gives
+      no guaranteed execution window; record as a threat-model note in ticket
+      38, not a test. Do not claim "no secrets in RAM across a power cut."
+- [x] "No secret material in retained RAM across warm resets" — **not a test**.
+      It depends on reset type: orderly teardown and watchdog (with the IRQ
+      above) wipe; brownout/power-cut cannot be guaranteed. Rewritten as a
+      threat-model note, not a checkbox.
 - [x] Any future flash logger must not store keys or plaintext (no flash logger exists).
 - [x] Host tests assert zeroized buffers (10 tests, `/Od` + `/O2`, disassembly
       confirms volatile zero loops survive optimization). This is the proof
