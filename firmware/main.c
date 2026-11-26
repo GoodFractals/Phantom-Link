@@ -312,10 +312,11 @@ typedef struct {
 
 #ifdef PHANTOM_STATUS_SAVE
 #ifdef PHANTOM_BRINGUP_TRACE
-static uint32_t status_next_save_ms = 8000u;
+#define STATUS_SAVE_INTERVAL_MS 8000u
 #else
-static uint32_t status_next_save_ms = 60000u;
+#define STATUS_SAVE_INTERVAL_MS 60000u
 #endif
+static uint32_t status_next_save_ms = STATUS_SAVE_INTERVAL_MS;
 #endif
 static uint32_t status_record_seq = 0;
 static uint32_t status_slot = 0;
@@ -968,7 +969,9 @@ static void status_save(uint32_t now) {
 #endif
 
     if ((int32_t)(now - status_next_save_ms) < 0) return;
-    status_next_save_ms = now;
+    /* Schedule the NEXT save relative to now. Setting it to `now` made every
+     * subsequent loop iteration write a page (thousands of writes per minute). */
+    status_next_save_ms = now + STATUS_SAVE_INTERVAL_MS;
 
     status_slot = (status_slot + 1u) % STATUS_SLOTS;
     if (status_slot == 0u) erase = true;
@@ -1019,6 +1022,9 @@ static void status_save(uint32_t now) {
     watchdog_update();
     if (rc != 0) {
         printf("SSAVE flash failed rc=%d\n", rc);
+    } else {
+        /* The record is now on flash; reflect that in the STATUS dump. */
+        status_valid = true;
     }
 #ifdef PHANTOM_BRINGUP_TRACE
     printf("SSAVE post-write rc=%d\n", rc);
