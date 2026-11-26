@@ -237,7 +237,7 @@ static int wifi_join_sta(void) {
                            (const uint8_t *)WIFI_SSID,
                            strlen(WIFI_PASSWORD),
                            (const uint8_t *)WIFI_PASSWORD,
-                           CYW43_AUTH_WPA2_AES_PSK, target, 3u);
+                           CYW43_AUTH_WPA2_AES_PSK, target, CYW43_CHANNEL_NONE);
 }
 
 static void frame_nonce(uint32_t seq, uint8_t nonce[PC_NONCE_BYTES]) {
@@ -541,6 +541,8 @@ static void note_peer(const ip_addr_t *addr, u16_t port) {
     last_heard_ms = now_ms();
 }
 
+static void sta_use_static_ip(void);  // forward decl for set_link_down()
+
 static void set_link_up(const char *why) {
     uint32_t now = now_ms();
     last_heard_ms = now;
@@ -585,6 +587,17 @@ static void set_link_down(const char *why) {
     }
 
     printf("LINK LOST (%s)\n", why);
+
+    // On a STA, a lost link means the AP may have rebooted. CYW43 can keep
+    // reporting LINK_UP to a dead AP, so force a fresh association and
+    // restore our static IP before the next HELLO goes out.
+    if (!is_ap && strcmp(why, "timeout") == 0) {
+        wifi_ready = false;
+        cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
+        last_wifi_retry_ms = now_ms();
+        wifi_join_sta();
+        sta_use_static_ip();
+    }
 }
 
 // --- Receive path -------------------------------------------------------------
@@ -1703,6 +1716,7 @@ static void sta_use_static_ip(void) {
 
 static void wifi_service(uint32_t now) {
     static int last_sta_status = -1;
+    static uint32_t transient_since = 0;
 
     if (is_ap) {
         wifi_ready = true;
@@ -1713,6 +1727,7 @@ static void wifi_service(uint32_t now) {
     if (st != last_sta_status) {
         printf("STA status: %s (%d)\n", sta_status_name(st), st);
         last_sta_status = st;
+        transient_since = now;
     }
 
     if (st == CYW43_LINK_UP) {
@@ -1745,7 +1760,12 @@ static void wifi_service(uint32_t now) {
                 sta_ever_connected = true;
             }
             last_wifi_retry_ms = now;
+            return;
         }
+        // CYW43 says LINK_UP but the static IP was not restored after the
+        // AP restarted. Re-apply it and let the retry logic run if needed.
+        sta_use_static_ip();
+        wifi_ready = true;
         return;
     }
 
@@ -1755,10 +1775,18 @@ static void wifi_service(uint32_t now) {
     }
 
     bool transient = (st == CYW43_LINK_JOIN || st == CYW43_LINK_NOIP);
-    if (!transient &&
+    // A transient state must not suppress retries forever: if the AP
+    // disappears and returns, CYW43 can park in JOIN/NOIP indefinitely.
+    // After WIFI_RETRY_MS in that state, leave and re-join explicitly.
+    bool transient_stuck = transient &&
+        (int32_t)(now - transient_since) >= (int32_t)WIFI_RETRY_MS;
+    if ((!transient || transient_stuck) &&
         (int32_t)(now - last_wifi_retry_ms) >= (int32_t)WIFI_RETRY_MS) {
         last_wifi_retry_ms = now;
-        printf("Wi-Fi reconnect attempt\n");
+        transient_since = now;
+        printf("Wi-Fi reconnect attempt (st=%d stuck=%d)\n", st,
+               (int)transient_stuck);
+        if (transient_stuck) cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
         wifi_join_sta();
     }
 }
