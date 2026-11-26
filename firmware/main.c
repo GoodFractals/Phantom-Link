@@ -23,6 +23,7 @@
 #include "pico/cyw43_arch.h"
 #include "hardware/adc.h"
 #include "hardware/flash.h"
+#include "pico/flash.h"
 #include "hardware/regs/addressmap.h"
 #include "hardware/sync.h"
 #include "hardware/gpio.h"
@@ -318,15 +319,6 @@ static void register_key_secrets(void) {
     keys_cleared = false;
 }
 
-/* Traffic-key selectors: ephemeral session keys once ECDH completes, static
- * PSK keys before that (and always for HELLO confirmation). */
-static const uint8_t *tx_traffic_key(void) {
-    return sess_keys_ready ? sess_tx_key : psk_tx_key;
-}
-static const uint8_t *rx_traffic_key(void) {
-    return sess_keys_ready ? sess_rx_key : psk_rx_key;
-}
-
 /* Derive ephemeral session keys from our ECDH context and the peer's public
  * key. Registers the new secrets with the zeroizer. Returns false on failure. */
 static bool derive_session_keys(const uint8_t peer_pub[X25519_KEY_BYTES]) {
@@ -514,10 +506,19 @@ static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
     if (status == PROTO_OK) mask_header_fields(buf);
     if (status == PROTO_OK && type == PROTO_TYPE_DATA) {
         uint8_t nonce[PC_NONCE_BYTES];
+        uint8_t frame_key[PC_DERIVED_KEY_BYTES];
         frame_nonce(frame.seq, nonce);
-        active_suite->seal(tx_traffic_key(), nonce, buf, PROTO_HEADER_LEN,
+        /* Ticket 33: derive a distinct key per frame (msg_id = frame seq).
+         * The tx ratchet master is the ECDH session key for our direction. */
+        if (!ratchets_ready ||
+            !ratchet_advance(&tx_ratchet, frame.seq, frame_key)) {
+            printf("RATCHET TX failed seq=%u\n", (unsigned)frame.seq);
+            return ERR_VAL;
+        }
+        active_suite->seal(frame_key, nonce, buf, PROTO_HEADER_LEN,
                            buf + PROTO_HEADER_LEN, payload_len,
                            buf + PROTO_HEADER_LEN + payload_len);
+        memset(frame_key, 0, sizeof frame_key);
     } else if (status == PROTO_OK) {
         status = proto_frame_put_crc(buf, len);
     }
@@ -860,6 +861,23 @@ static void status_load(void) {
            status_valid ? "loaded" : "none", (unsigned)status_record_seq);
 }
 
+/* Full 256-byte flash page in RAM. status_record_t is only 88 bytes, so the
+ * page buffer avoids the stack over-read that the old &rec programming did. */
+static uint8_t status_page[FLASH_PAGE_SIZE];
+
+/* flash_safe_execute() callback: runs with IRQs disabled and code out of XIP,
+ * the SDK-documented pattern. */
+typedef struct {
+    uint32_t offset;
+    bool erase;
+} flash_write_ctx_t;
+
+static void status_flash_write(void *arg) {
+    flash_write_ctx_t *ctx = (flash_write_ctx_t *)arg;
+    if (ctx->erase) flash_range_erase(STATUS_FLASH_BASE, FLASH_SECTOR_SIZE);
+    flash_range_program(ctx->offset, status_page, FLASH_PAGE_SIZE);
+}
+
 static void status_save(uint32_t now) {
 #ifndef PHANTOM_STATUS_SAVE
     (void)now;
@@ -869,7 +887,7 @@ static void status_save(uint32_t now) {
 #else
     status_record_t rec;
     sfo_telemetry_snapshot_t sfo;
-    uint32_t offset, irq;
+    uint32_t offset;
     bool erase = false;
 
 #ifdef PHANTOM_BRINGUP_TRACE
@@ -914,8 +932,11 @@ static void status_save(uint32_t now) {
     rec.sfo_total = sfo.total;
     rec.sfo_reorders = sfo.reorders;
     rec.crc = proto_crc32((const uint8_t *)&rec, sizeof rec - sizeof(uint32_t));
+    memset(status_page, 0, sizeof status_page);
+    memcpy(status_page, &rec, sizeof rec);
 #ifdef PHANTOM_BRINGUP_TRACE
-    printf("SSAVE crc done=%08x\n", (unsigned)rec.crc);
+    printf("SSAVE crc done=%08x page_bytes=%u\n", (unsigned)rec.crc,
+           (unsigned)sizeof status_page);
 #endif
 
 #ifdef PHANTOM_BRINGUP_TRACE
@@ -923,20 +944,18 @@ static void status_save(uint32_t now) {
            (unsigned)status_slot, (unsigned)offset, (int)erase,
            (unsigned)rec.seq, (unsigned)STATUS_FLASH_BASE);
 #endif
-    // Take the CYW43 async-context lock so no PIO-SPI transfer is in flight
-    // while the ROM flash routine owns the QSPI bus. The watchdog MUST be
-    // disabled around flash_range_* : interrupts are off inside those calls,
-    // so watchdog_update() cannot run and a slow sector erase trips a reset.
-    cyw43_arch_lwip_begin();
-    watchdog_disable();
-    irq = save_and_disable_interrupts();
-    if (erase) flash_range_erase(STATUS_FLASH_BASE, FLASH_SECTOR_SIZE);
-    flash_range_program(offset, (const uint8_t *)&rec, STATUS_SLOT_SIZE);
-    restore_interrupts(irq);
-    watchdog_enable(8000u, false);
-    cyw43_arch_lwip_end();
+    // SDK-documented API: flash_safe_execute() handles IRQ disable + XIP
+    // re-entry correctly. cyw43_arch_lwip_begin/end are no-ops in the poll
+    // build, so they were removed. Feed the watchdog immediately before.
+    watchdog_update();
+    flash_write_ctx_t ctx = { .offset = offset, .erase = erase };
+    int rc = flash_safe_execute(status_flash_write, &ctx, 5000u);
+    watchdog_update();
+    if (rc != 0) {
+        printf("SSAVE flash failed rc=%d\n", rc);
+    }
 #ifdef PHANTOM_BRINGUP_TRACE
-    printf("SSAVE post-quiesce\n");
+    printf("SSAVE post-write rc=%d\n", rc);
 #endif
 #endif /* PHANTOM_STATUS_SAVE */
 }
@@ -969,6 +988,9 @@ static void status_dump(void) {
     printf("persist seq=%u valid=%u slot=%u\n",
            (unsigned)status_record_seq, status_valid ? 1u : 0u,
            (unsigned)status_slot);
+    printf("ratchet tx_key=%u rx_key=%u rollbacks=%u ready=%d\n",
+           (unsigned)tx_ratchet.accepted, (unsigned)rx_ratchet.accepted,
+           (unsigned)rx_ratchet.rollbacks_rejected, (int)ratchets_ready);
     printf("=== END STATUS ===\n");
 }
 
@@ -1231,15 +1253,25 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
             return;
         }
         frame_nonce(frame.seq, nonce);
-        if (wire_len != PROTO_HEADER_LEN + frame.payload_len + PROTO_AUTH_LEN ||
+        /* Ticket 33: recover the per-frame key from the ratchet using the
+         * seq from the (unmasked) header. Out-of-order frames inside the
+         * 8-slot window resolve to their cached key; rollbacks are rejected. */
+        uint8_t frame_key[PC_DERIVED_KEY_BYTES];
+        bool ratchet_ok = ratchets_ready &&
+            ratchet_advance(&rx_ratchet, frame.seq, frame_key);
+        if (!ratchet_ok ||
+            wire_len != PROTO_HEADER_LEN + frame.payload_len + PROTO_AUTH_LEN ||
             active_suite->open(
-                rx_traffic_key(), nonce, masked_header, PROTO_HEADER_LEN,
+                frame_key, nonce, masked_header, PROTO_HEADER_LEN,
                 buf + PROTO_HEADER_LEN, frame.payload_len,
                 buf + PROTO_HEADER_LEN + frame.payload_len) != 0) {
+            memset(frame_key, 0, sizeof frame_key);
             crypto_errors++;
-            printf("CRYPTO FAIL: bad tag (%u bytes)\n", (unsigned)wire_len);
+            printf("CRYPTO FAIL: bad tag (%u bytes) ratchet=%d\n",
+                   (unsigned)wire_len, (int)ratchet_ok);
             return;
         }
+        memset(frame_key, 0, sizeof frame_key);
     } else {
         status = proto_frame_check_crc(buf, wire_len);
         if (status != PROTO_OK) {
