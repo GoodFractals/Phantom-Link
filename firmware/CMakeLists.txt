@@ -71,7 +71,7 @@ add_phantom_target(phantom_link_sta 0)
 
 option(PHANTOM_WATCHDOG_TEST "Build forced-hang watchdog test firmware" OFF)
 option(PHANTOM_USE_AEAD "Use ChaCha20-Poly1305 instead of Speck CTR+CMAC" OFF)
-option(PHANTOM_STATUS_SAVE "Enable STATUS flash writes (ticket 20; hardware flash-write hang on these boards)" OFF)
+option(PHANTOM_STATUS_SAVE "Enable STATUS flash writes (ticket 20; over-read and interval fixed, power-cycle verified)" ON)
 option(PHANTOM_BRINGUP_TRACE "Draw bring-up checkpoints on the OLED" OFF)
 option(PHANTOM_DATA_PROBE "Enable 'T' serial command to inject a test DATA frame" OFF)
 if(PHANTOM_USE_AEAD)
