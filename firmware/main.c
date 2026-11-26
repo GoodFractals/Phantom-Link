@@ -924,15 +924,16 @@ static void status_save(uint32_t now) {
            (unsigned)rec.seq, (unsigned)STATUS_FLASH_BASE);
 #endif
     // Take the CYW43 async-context lock so no PIO-SPI transfer is in flight
-    // while the ROM flash routine owns the QSPI bus, then feed the watchdog
-    // around the erase/program (interrupts are off inside flash_range_*).
+    // while the ROM flash routine owns the QSPI bus. The watchdog MUST be
+    // disabled around flash_range_* : interrupts are off inside those calls,
+    // so watchdog_update() cannot run and a slow sector erase trips a reset.
     cyw43_arch_lwip_begin();
-    watchdog_update();
+    watchdog_disable();
     irq = save_and_disable_interrupts();
     if (erase) flash_range_erase(STATUS_FLASH_BASE, FLASH_SECTOR_SIZE);
     flash_range_program(offset, (const uint8_t *)&rec, STATUS_SLOT_SIZE);
     restore_interrupts(irq);
-    watchdog_update();
+    watchdog_enable(8000u, false);
     cyw43_arch_lwip_end();
 #ifdef PHANTOM_BRINGUP_TRACE
     printf("SSAVE post-quiesce\n");
