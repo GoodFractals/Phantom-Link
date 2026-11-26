@@ -279,3 +279,69 @@ earlier plaintext PoC — it is **not** an independent cryptographic security
 review and must not be cited as one. Until then the honest wording is "two-party
 proof of concept, unattended security review pending, PSK extractable, not
 covert".
+
+---
+
+## Machine-assisted review (2026-11-26) — findings and remediation
+
+A read-only machine pass answered the eight questions above against the current
+code (HEAD `dbde3a7` at the time). **This is not the independent human review the
+ticket requires.** The pass is an aid for the PR; the ticket stays open until a
+real person signs off. Source identity was recorded in `docs/REVIEW_PACK_37.md`.
+
+### High findings — remediated on hardware
+
+1. **ECDH scalar reused across sessions.** `ecdh_ready` was cleared only on
+   teardown, so every session until BYE reused the same private scalar — making
+   "ephemeral X25519 per session" false. Fixed: `adopt_session()` now calls
+   `x25519_clear()` and clears `ecdh_ready`; the next HELLO/HELLO_ACK generates a
+   fresh keypair. `derive_session_keys()` no longer regenerates after HELLO_ACK
+   sent its public key (that mismatch caused `wrong=50+` after teardown in the
+   first attempt and was itself corrected). Verified: BYE -> re-link produces a
+   fresh session with `wrong=0`, zero auth/crypto growth.
+2. **Unauthenticated ratchet tip advance.** RX called `ratchet_advance()` before
+   tag verification; a forged high-seq frame with a bad tag could slide the tip
+   and wedge all later legitimate frames. Fixed: snapshot the ratchet, verify
+   the tag, restore the snapshot on any failure. Tamper probe still rejected
+   (`crypto=1`) and a valid frame immediately after still decrypts.
+
+### Medium findings — fixed or documented
+
+3. **Confirm tag bound only 8 of 32 public-key bytes.** The code comment claimed
+   "this exact ECDH key". Corrected to "first 8 bytes; the full key is appended
+   and implicitly authenticated by the DATA tag". No wire change; documented
+   boundary, not claimed as explicit binding.
+4. **Heap-resident mbedTLS scalars survived zeroization.** `x25519_clear()` was
+   never called from `main.c`; the tracker wiped struct bytes but not the MPI
+   heap limbs. Fixed: called before `zeroize_tracker_clear_all()` in both BYE
+   paths and in `adopt_session()`. Order matters — after the tracker wipe the
+   `ready` flag is zero and the limbs would leak.
+5. **Header-mask keystream reuse within a session.** Nonce is bound to
+   `session_id` only; two masked headers in one session cancel the keystream.
+   Accepted as a documented residual (low-sensitivity metadata; payload keys
+   are per-frame). Do not claim header confidentiality. Lesson 002 moat 9 needs
+   the wording "masked with session-derived keys", not "encrypted".
+6. **Stale docs.** `docs/teach_security/reference/security-layer.md` and Lesson
+   002 moats 7–11 still described pre-hardening status. Being updated alongside
+   this finding. `docs/PHANTOM_LINK_DATASHEET.md` is user-owned and untracked;
+   it must be updated by its owner before the freeze.
+
+### Informational / accepted residual
+
+- Tag is 8 bytes -> `2^-64` forgery bound; adequate for this budget, never call
+  it "128-bit authentication". Verify-before-decrypt compares are constant-time;
+  the AEAD stub is not fail-open (it would crash if selected).
+- 32-bit seq wrap is not handled by the replay window (the ratchet is wrap-aware).
+  Years of continuous uptime; document, do not fix.
+- `pc_kdf()` returns all-zero keys for an overlong salt; current callers are safe.
+- LINK UP can be set by a CRC-only PING/PONG after an active session; do not
+  claim it proves ECDH completion.
+- Freeze prerequisites unmet: no review tag, untracked datasheet, UF2 hashes not
+  recorded for the final tree.
+
+### What a human reviewer should focus on
+
+The two remediated high findings changed firmware and were re-verified on
+hardware; the remaining medium/low items are boundaries to confirm, not code to
+rewrite. `docs/REVIEW_PACK_37.md` has the eight questions and the source identity.
+No "reviewed" / "audited" wording until a person publishes findings here.
