@@ -71,7 +71,7 @@ add_phantom_target(phantom_link_sta 0)
 
 option(PHANTOM_WATCHDOG_TEST "Build forced-hang watchdog test firmware" OFF)
 option(PHANTOM_USE_AEAD "Use ChaCha20-Poly1305 instead of Speck CTR+CMAC" OFF)
-option(PHANTOM_STATUS_SAVE "Enable STATUS flash writes (ticket 20; verified fixed)" ON)
+option(PHANTOM_STATUS_SAVE "Enable STATUS flash writes (ticket 20; hardware flash-write hang on these boards)" OFF)
 option(PHANTOM_BRINGUP_TRACE "Draw bring-up checkpoints on the OLED" OFF)
 if(PHANTOM_USE_AEAD)
     target_compile_definitions(phantom_link_ap PRIVATE PHANTOM_USE_AEAD=1)
