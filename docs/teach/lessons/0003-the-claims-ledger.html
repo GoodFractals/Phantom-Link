@@ -38,7 +38,7 @@
   <tr><td><span class="badge todo">OPEN</span></td><td>No acceptance evidence yet.</td><td>Do not claim capability. Say it is planned, in that order.</td></tr>
   <tr><td><span class="derived">DERIVED</span></td><td>An inference from proven facts that is useful in a marketing sentence but is not itself a measurement.</td><td>Use it only with the hedge "this means / this implies", and keep the ticket basis attached.</td></tr>
 </table>
-<p class="small">Counts on 2026-11-26: <strong>26 closed</strong>, <strong>1 reopened</strong> (20), <strong>12 open</strong> (17, 21&ndash;29, 35, 37). UI tickets 24/25/26/28 are parked, not failed.</p>
+<p class="small">Counts on 2026-11-26: <strong>27 closed</strong>, <strong>12 open</strong> (17, 21&ndash;29, 35, 37). UI tickets 24/25/26/28 are parked, not failed.</p>
 
 <h2>1. Framing, transport and UI &mdash; tickets 01&ndash;09</h2>
 <table class="ledger">
@@ -78,7 +78,7 @@
   <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
   <tr><td>18</td><td><span class="badge ok">CLOSED</span></td><td>10/10 AP restarts and 10/10 STA restarts re-linked in &lt;10 s with fresh sessions; host state machine 12 cases; bounded backoff logged; session epochs adopted; stale session rejected.</td><td class="derived">The pair self-heals after either board reboots, without operator intervention.</td><td>Deliberate `RECONNECTING` HUD state is parked UI work (25).</td></tr>
   <tr><td>19</td><td><span class="badge ok">CLOSED</span></td><td>Watchdog armed after Wi-Fi/UDP bring-up at 8 s; forced hang resets in &lt;8 s and re-links; `RESET reason: watchdog` logged; 1 h normal operation never tripped.</td><td class="derived">A wedge does not leave the rig dead in the field.</td><td>Long blocking work (flash) had to be handled &mdash; see 20. 24 h soak is 21.</td></tr>
-  <tr><td>20</td><td><span class="badge warn">REOPENED &mdash; FIX APPLIED</span></td><td>STATUS prints all required fields; root cause of flash hang identified as a 168-byte stack over-read (`&rec` programmed as 256 bytes); fixed with a full RAM page and `flash_safe_execute()`; 95 s clean run with writes enabled, no reset/hang; CRC fallback on corrupt record.</td><td class="derived">The observability path is now defensible, and the failure was diagnosed rather than patched around.</td><td><strong>Persistence across a power cycle is NOT yet re-verified after the fix.</strong> Ticket stays open until that gate passes.</td></tr>
+  <tr><td>20</td><td><span class="badge ok">CLOSED</span></td><td>STATUS prints all required fields; flash hang root-caused to a 168-byte stack over-read and fixed with a full RAM page + `flash_safe_execute()`; second bug (write every loop, 4466 writes/70 s) fixed to one write/minute; 70 s run `seq=0 → 1 valid=1`; after a physical power cycle both boards boot `persist seq=4 valid=1 slot=4`.</td><td class="derived">An unattended run can be audited after the fact, and the failure was diagnosed rather than patched around.</td><td>One record per minute, not per frame. `valid=1` after power cycle is the proof the record actually loaded from flash.</td></tr>
   <tr><td>21</td><td><span class="badge todo">OPEN</span></td><td>Short soaks only (95 s, 1 h in 19).</td><td class="derived">No 24 h claim.</td><td>Do not claim 24 h stability, bounded memory over a day, or brownout recovery.</td></tr>
   <tr><td>22</td><td><span class="badge todo">OPEN</span></td><td>None yet.</td><td class="derived">No marketable claim.</td><td>Do not quote runtime hours, current table, or "untethered for X hours".</td></tr>
   <tr><td>23</td><td><span class="badge todo">OPEN</span></td><td>None yet.</td><td class="derived">No marketable claim.</td><td>Do not claim untethered boot/link or repeated pack runs.</td></tr>
@@ -119,6 +119,7 @@
   <li>"A forced software hang is recovered by the watchdog in under 8 seconds and the link comes back." (19)</li>
   <li>"The STA refuses to join an AP with the wrong hardware address, even if the SSID and password match." (39)</li>
   <li>"Every build prints a short source hash, so a log can be tied to an exact tree." (02)</li>
+  <li>"STATUS counters persist to flash at one record per minute and survive a power cycle." (20)</li>
 </ul>
 
 <h2>8. Sentences you must not say</h2>
@@ -128,14 +129,15 @@
   <strong>"MAC-layer SFO / covert channel."</strong> Our SFO is application-layer telemetry; the CYW43 MAC/PHY is untouched (15, 16, 29; Lesson 001).<br>
   <strong>"Independently reviewed / audited."</strong> Ticket 37 is open.<br>
   <strong>"Military-grade" / "NIST-approved crypto."</strong> Speck128 is a lightweight cipher chosen for this MCU, validated against published vectors.<br>
-  <strong>"Persistence verified" / "STATUS survives power cycle."</strong> The flash fix is applied but the power-cycle gate is pending (20).<br>
   <strong>"Secure boot, encrypted boot, debug lock enabled."</strong> Ticket 35 is research only; OTP is untouched.<br>
   <strong>"Covert, undetectable traffic."</strong> Ticket 29 reduces trivial fingerprints; tickets 17 and 22 (sniffer report and airtime cost) are open.
 </div>
 
 <h2>9. Test yourself</h2>
-<div class="quiz"><strong>We have a 95 s clean soak with STATUS writes enabled. Can we close ticket 20?</strong><br>
-<span class="answer">No. The flash over-read is fixed and the hang is gone, but ticket 20's acceptance criterion is counters surviving a power cycle. That re-test has not been done. Mechanism proven; persistence not yet proven.</span></div>
+<div class="quiz"><strong>Ticket 20 showed `persist seq=1 valid=1` after 70 s. Why was that not enough to close it?</strong><br>
+<span class="answer">A write happening once is a mechanism proof, not a persistence proof. The acceptance criterion is reading the record back after a reboot. Closing it required a physical power cycle and seeing `valid=1` on boot — which can only be set by `status_load()` finding a valid CRC on flash.</span></div>
+<div class="quiz"><strong>Why did the first flash fix produce `persist seq=4466` after 70 s?</strong><br>
+<span class="answer">The save interval was reset to `now` instead of `now + 60000`, so every loop iteration after the first minute wrote a page. The symptom looked like a counter bug but it was a scheduling bug; the fix is one line plus the correct interval constant.</span></div>
 <div class="quiz"><strong>The ESP32 saw no plaintext. Does that prove forward secrecy?</strong><br>
 <span class="answer">No. It proves a passive no-PSK observer sees ciphertext. Forward secrecy is a different property: a later PSK compromise cannot decrypt old sessions, and that is proved by ticket 31's KATs plus the hardware handshake, not by the RF capture.</span></div>
 <div class="quiz"><strong>Ticket 34 says "encrypted header". Can we claim the `proto_hdr` envelope with its separate 8-byte tag is on the wire?</strong><br>
@@ -150,7 +152,7 @@
   <li>Ticket files and evidence: <code>.scratch/phantom-link-v1/issues/*.md</code> (01&ndash;39).</li>
   <li>Ticket 14 RF evidence: <code>logs/capture14/capture14_20261125_rf_evidence.md</code> &mdash; 73 AP DATA frames, zero plaintext hits.</li>
   <li>Ticket 32/33/34 hardware verification: serial captures dated 2026-11-26, builds `2d10012` / `484bc4b` and their predecessors.</li>
-  <li>Ticket 20 root cause: <code>logs/watchdog_flash_fix_19.md</code> and the 2026-11-26 flash over-read finding.</li>
+  <li>Ticket 20 root cause: <code>logs/watchdog_flash_fix_19.md</code> and the 2026-11-26 flash over-read / save-interval findings; power-cycle verification 2026-11-26.</li>
   <li>Threat model and boundaries: ticket 38;Lesson 002 covers the moat map; Lesson 001 covers SFO vs true MAC-layer SFO.</li>
 </ul>
 <p class="small">[[RESOURCES.md]] &mdash; When a ticket closes, update the counts in section 0 and move its row before you repeat a claim in docs.</p>
