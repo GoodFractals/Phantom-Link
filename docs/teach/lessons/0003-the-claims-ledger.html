@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 003 &mdash; The Claims Ledger</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+<style>
+  .badge { font: 12px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           padding: .1rem .4rem; border-radius: 3px; white-space: nowrap; }
+  .ok { background: #dcead9; color: #27502a; }
+  .warn { background: #f4e4c8; color: #6b4a12; }
+  .todo { background: #e6e2dc; color: #555; }
+  .ledger { font-size: 14px; }
+  .ledger td:nth-child(1) { white-space: nowrap; font-weight: bold; }
+  .ledger td:nth-child(2) { white-space: nowrap; }
+  .derived { color: #6b3f2f; }
+  @media print {
+    body { max-width: none; font-size: 10.5pt; }
+    h2 { break-after: avoid; }
+    tr { break-inside: avoid; }
+    .quiz .answer { display: block !important; color: var(--ink); font-weight: normal; }
+  }
+</style>
+</head>
+<body>
+<p class="small">Phantom Link teaching workspace &mdash; Lesson 003 &mdash; [[MISSION.md]]</p>
+<h1>The Claims Ledger: what all 39 tickets let us say</h1>
+<p class="small">Read time: 25 minutes. One win: for any claim about Phantom Link, you can name the ticket that proves it, the inference someone might draw from it, and the line you must not cross.</p>
+
+<div class="callout"><strong>Rule of the house (same as Lesson 002):</strong> a claim without a test is marketing. This ledger separates <strong>PROVEN</strong> (a host test or hardware log exists), <strong>DERIVED</strong> (a reasonable inference a reader or recruiter might make &mdash; useful, but labelled as inference, not evidence), and <strong>BOUNDARY</strong> (the thing the proof explicitly does <em>not</em> cover). If you say a DERIVED line as if it were PROVEN, you have crossed the line.</div>
+
+<h2>0. How to read this ledger</h2>
+<table>
+  <tr><th>Mark</th><th>Meaning</th><th>How to use it</th></tr>
+  <tr><td><span class="badge ok">PROVEN</span></td><td>A named test, serial log, capture, or build artifact exists.</td><td>Say it in docs, interviews, and the datasheet. Cite the ticket.</td></tr>
+  <tr><td><span class="badge warn">IN PROGRESS / REOPENED</span></td><td>Work is done but the acceptance gate has not fully passed.</td><td>Describe the mechanism, never the result. "Fix applied, re-test pending."</td></tr>
+  <tr><td><span class="badge todo">OPEN</span></td><td>No acceptance evidence yet.</td><td>Do not claim capability. Say it is planned, in that order.</td></tr>
+  <tr><td><span class="derived">DERIVED</span></td><td>An inference from proven facts that is useful in a marketing sentence but is not itself a measurement.</td><td>Use it only with the hedge "this means / this implies", and keep the ticket basis attached.</td></tr>
+</table>
+<p class="small">Counts on 2026-11-26: <strong>25 closed</strong>, <strong>1 reopened</strong> (20), <strong>1 hardware-verification in progress</strong> (32), <strong>12 open</strong> (17, 21&ndash;29, 35, 37). UI tickets 24/25/26/28 are parked, not failed.</p>
+
+<h2>1. Framing, transport and UI &mdash; tickets 01&ndash;09</h2>
+<table class="ledger">
+  <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
+  <tr><td>01</td><td><span class="badge ok">CLOSED</span></td><td>Host suite runs on Windows with no board; 18/18 `ctest`; both targets build `-Wall -Wextra -Werror`; fresh checkout needs no `PICO_SDK_PATH`.</td><td class="derived">Verification is reproducible, not a one-off on the author's machine.</td><td>Host green is not hardware acceptance; that is 09/14.</td></tr>
+  <tr><td>02</td><td><span class="badge ok">CLOSED</span></td><td>Banner prints before any Wi-Fi line on both boards; carries protocol version + short build hash; hash changes with `main.c` and is stable across rebuilds.</td><td class="derived">Every capture can be tied back to an exact source tree &mdash; audit trail, not just logs.</td><td>Serial diagnostic only; the OLED does not show the banner.</td></tr>
+  <tr><td>03</td><td><span class="badge ok">CLOSED</span></td><td>Payload lengths 0&ndash;64 round-trip; every truncated prefix rejected; 100k random buffers with no crash/hang/unbounded allocation; distinct status codes for bad magic/version/length/CRC; no SDK dependency.</td><td class="derived">Parser is bounded under malformed input and portable enough to test off-target.</td><td>CRC32 is a checksum, not cryptographic integrity &mdash; that is 10/14.</td></tr>
+  <tr><td>04</td><td><span class="badge ok">CLOSED</span></td><td>Typed frames use assigned codes; unknown types are dropped and counted; no raw token parsing remains in the app path.</td><td class="derived">The link is a real protocol with a state machine, not string matching.</td><td>Two original hardware checkboxes were folded into 09; do not claim separate per-ticket hardware proof.</td></tr>
+  <tr><td>05</td><td><span class="badge ok">CLOSED</span></td><td>32-bit sliding replay window; replayed datagrams rejected and logged; separate accepted/duplicate/stale counters; new session resets sequence state.</td><td class="derived">UDP reordering and duplication are handled deliberately, not accidentally.</td><td>Reboot-ID hardware criterion is evidenced through 09.</td></tr>
+  <tr><td>06</td><td><span class="badge ok">CLOSED</span></td><td>With 10% induced loss, a 21-glyph message arrives exactly once in both directions; bounded retries; no partial message surfaced; lost ACK does not duplicate delivery.</td><td class="derived">Reliable delivery over an unreliable transport without TCP.</td><td>10% induced loss is a harness figure, not a field measurement.</td></tr>
+  <tr><td>07</td><td><span class="badge ok">CLOSED</span></td><td>Hardware PASS 2026-11-21 on build `54618e9d`: 21-glyph send, DELETE mid-send abort, clean re-send; 64-deep bounded ring with reported overflow.</td><td class="derived">UI stays responsive under send load; memory does not grow without bound.</td><td>Bounded depth is not a throughput guarantee.</td></tr>
+  <tr><td>08</td><td><span class="badge ok">CLOSED</span></td><td>`BYE` moves the peer to NO LINK within one heartbeat; power-cycle still falls back to timeout; reason logged both sides; teardown gesture is a 2.5 s two-button chord.</td><td class="derived">Link state is deterministic &mdash; no ghost "connected" state after a close.</td><td>The chord is a rig gesture, not a product UX claim (UI tickets parked).</td></tr>
+  <tr><td>09</td><td><span class="badge ok">CLOSED</span></td><td>T2&ndash;T12 pass on hardware build `e4fadca7`; replay rejected with zero accepted; OLED photos show LINK UP and both pages; UF2 hashes archived with logs.</td><td class="derived">The framing design works on real silicon and real radios, not just the host.</td><td>This is the plaintext-era baseline; crypto acceptance is ticket 14.</td></tr>
+</table>
+
+<h2>2. Crypto primitives, handshake and hardware acceptance &mdash; tickets 10&ndash;14</h2>
+<table class="ledger">
+  <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
+  <tr><td>10</td><td><span class="badge ok">CLOSED</span></td><td>Published Speck128/128 KATs; RFC 4493 CMAC vectors; separate directional keys from one session; boot self-test blocks LINK UP on failure (`CRYPTO FAIL`).</td><td class="derived">Primitives are checked against published vectors rather than trusted by inspection.</td><td>Speck is a lightweight cipher chosen for this MCU &mdash; never call it "military-grade" or NIST-approved.</td></tr>
+  <tr><td>11</td><td><span class="badge ok">CLOSED</span></td><td>Key confirmation binds session ID, sequence and nonce; same PSK confirms, different PSK reaches `AUTH FAILED`; missing/malformed tag counted; replayed tag rejected; PSK override documented.</td><td class="derived">Misconfiguration fails closed and loudly instead of silently connecting.</td><td>Ticket text marks some items "code complete"; the hardware AUTH gate is 14.</td></tr>
+  <tr><td>12</td><td><span class="badge ok">CLOSED</span></td><td>DATA frames flagged encrypted; serial logs show ciphertext length only; tampered tag drops the frame and increments `crypto`; decryption failure never surfaces partial text; nonce documented.</td><td class="derived">User text exists only inside the encrypted envelope, never in diagnostics.</td><td>Hardware proof is 14.</td></tr>
+  <tr><td>13</td><td><span class="badge ok">CLOSED</span></td><td>10k replayed frames accepted zero times; every single-bit flip in header/payload/tag rejected; far-out sequence rejected; distinct `duplicate`/`stale`/`wrong`/`crypto`/`auth` counters; a valid frame after a rejected one passes.</td><td class="derived">The receiver does not get stuck or poisoned by an attack burst.</td><td>Host module proof; hardware replay/tamper is 14.</td></tr>
+  <tr><td>14</td><td><span class="badge ok">CLOSED</span></td><td>Hardware T2&ndash;T12 on `3b666adb`; T15 replay `stale`, zero accepted; T16 tamper `CRYPTO FAIL: bad tag`; T17 wrong PSK `AUTH FAILED`, no LINK UP; pktmon and ESP32 no-PSK RF capture: 73 AP DATA frames, zero plaintext hits; logs archived.</td><td class="derived">A passive RF observer with no credentials cannot read message text &mdash; and the project has the capture to show it, not just an assertion.</td><td>SFO here is application-layer telemetry only: no MAC-layer SFO or covert-channel claim. The v1 PSK residual risk is 38, mitigated for old traffic by 31.</td></tr>
+</table>
+
+<h2>3. SFO, LPI and field measurement &mdash; tickets 15&ndash;17, 29</h2>
+<table class="ledger">
+  <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
+  <tr><td>15</td><td><span class="badge ok">CLOSED</span></td><td>24 permutations map deterministically, 8 unused codes rejected; loopback decodes all 16 nibbles; CRC8 catches corruption; three repeats resolve by majority; duplicate index in one burst rejected.</td><td class="derived">A small side channel works on the real transport without touching message data.</td><td>Bounded-jitter scheduler checkbox is not measured here (29/22).</td></tr>
+  <tr><td>16</td><td><span class="badge ok">CLOSED</span></td><td>Serial reports good/total, bits/s, reorder rate; `SFO_DISABLED` changes nothing about delivery; failure logged as `SFO degraded`, never a message failure; read-only counters; decoy generator emits harmless control frames.</td><td class="derived">Telemetry is observable without being coupled to delivery &mdash; failure stays contained.</td><td>Decoy airtime and power cost unmeasured (22).</td></tr>
+  <tr><td>17</td><td><span class="badge todo">OPEN</span></td><td>None yet.</td><td class="derived">No marketable claim.</td><td>Do not quote range, decode rate, or a "demo distance" until three distances &times;100 bursts are recorded.</td></tr>
+  <tr><td>29</td><td><span class="badge todo">OPEN</span></td><td>DATA always 64-byte padded; random padding with real length inside ciphertext; bounded-jitter decoys; decoys never inflate `msgdrop`; SSID `TMOBILE-1219`; header fields masked with a key-derived stream (now ECDH-derived via 34); no CYW43 TX-power API in SDK 2.3.1.</td><td class="derived">Constant-length frames and camouflaged naming remove trivial traffic fingerprints.</td><td>Application layer only &mdash; no MAC-layer SFO/covert claim. Sniffer detection report (17) open; airtime/power (22) open.</td></tr>
+</table>
+
+<h2>4. Resilience, watchdog and untethered operation &mdash; tickets 18&ndash;23</h2>
+<table class="ledger">
+  <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
+  <tr><td>18</td><td><span class="badge ok">CLOSED</span></td><td>10/10 AP restarts and 10/10 STA restarts re-linked in &lt;10 s with fresh sessions; host state machine 12 cases; bounded backoff logged; session epochs adopted; stale session rejected.</td><td class="derived">The pair self-heals after either board reboots, without operator intervention.</td><td>Deliberate `RECONNECTING` HUD state is parked UI work (25).</td></tr>
+  <tr><td>19</td><td><span class="badge ok">CLOSED</span></td><td>Watchdog armed after Wi-Fi/UDP bring-up at 8 s; forced hang resets in &lt;8 s and re-links; `RESET reason: watchdog` logged; 1 h normal operation never tripped.</td><td class="derived">A wedge does not leave the rig dead in the field.</td><td>Long blocking work (flash) had to be handled &mdash; see 20. 24 h soak is 21.</td></tr>
+  <tr><td>20</td><td><span class="badge warn">REOPENED &mdash; FIX APPLIED</span></td><td>STATUS prints all required fields; root cause of flash hang identified as a 168-byte stack over-read (`&rec` programmed as 256 bytes); fixed with a full RAM page and `flash_safe_execute()`; 95 s clean run with writes enabled, no reset/hang; CRC fallback on corrupt record.</td><td class="derived">The observability path is now defensible, and the failure was diagnosed rather than patched around.</td><td><strong>Persistence across a power cycle is NOT yet re-verified after the fix.</strong> Ticket stays open until that gate passes.</td></tr>
+  <tr><td>21</td><td><span class="badge todo">OPEN</span></td><td>Short soaks only (95 s, 1 h in 19).</td><td class="derived">No 24 h claim.</td><td>Do not claim 24 h stability, bounded memory over a day, or brownout recovery.</td></tr>
+  <tr><td>22</td><td><span class="badge todo">OPEN</span></td><td>None yet.</td><td class="derived">No marketable claim.</td><td>Do not quote runtime hours, current table, or "untethered for X hours".</td></tr>
+  <tr><td>23</td><td><span class="badge todo">OPEN</span></td><td>None yet.</td><td class="derived">No marketable claim.</td><td>Do not claim untethered boot/link or repeated pack runs.</td></tr>
+</table>
+
+<h2>5. Crypto hardening wave &mdash; tickets 31&ndash;36, 38&ndash;39</h2>
+<table class="ledger">
+  <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
+  <tr><td>31</td><td><span class="badge ok">CLOSED</span></td><td>Ephemeral X25519 public keys in HELLO/HELLO_ACK (16&rarr;48-byte payload); ECDH-derived directional traffic keys; session ID in KDF salt; `x25519_selftest()` gates LINK UP; hardware LINK UP with zero auth/crypto errors.</td><td class="derived">A recorded session cannot be decrypted with a later PSK compromise &mdash; forward secrecy is real on the device.</td><td>PSK still bootstraps and authenticates the handshake. Live impersonation by a PSK holder is not prevented.</td></tr>
+  <tr><td>32</td><td><span class="badge warn">HARDWARE VERIFICATION IN PROGRESS</span></td><td>Host RFC 8439 KATs for ChaCha20/Poly1305; verify-before-decrypt; constant-time compare; exhaustive single-bit tamper; 16-byte key expanded to 32 via KDF; compile-time selection; wire format unchanged.</td><td class="derived">The suite is swappable behind a build flag, so algorithm agility is designed in, not bolted on.</td><td>Do not say "AEAD verified on hardware" until both boards pass with `PHANTOM_USE_AEAD=ON` and the tamper probe.</td></tr>
+  <tr><td>33</td><td><span class="badge ok">CLOSED</span></td><td>Host KAT vectors and rollback rejection; 8-slot out-of-order window including uint32 wraparound; hardware `T` probe: STA `tx_key=1`, AP `rx_key=1`, `rollbacks=0`, `errors auth=0 crypto=0`; 95 s soak clean.</td><td class="derived">Compromising one frame key does not expose the rest of the session &mdash; blast radius is bounded forward in time.</td><td>RAM-only; neither ratchet nor session survives reboot (by design).</td></tr>
+  <tr><td>34</td><td><span class="badge ok">CLOSED</span></td><td>Header bytes 6&ndash;17 masked with domain-separated ECDH keys after handshake; clear-prefix flag selects the key during handshake transitions; 95 s soak with `wrong=0`, `crypto=0`; DATA decrypted on peer; host `proto_hdr` module green.</td><td class="derived">A leaked PSK alone no longer reveals session ID, sequence or ACK of post-handshake frames.</td><td>The separate 8-byte `proto_hdr` envelope tag is <em>not</em> deployed on the wire; no wire-length change. Mask nonce is fixed per session, so keystream repeats within a session &mdash; header fields are low-sensitivity metadata and payload keys are per-frame (33).</td></tr>
+  <tr><td>35</td><td><span class="badge todo">OPEN</span></td><td>Research only &mdash; ticket 38 rejected most of it for v1.</td><td class="derived">No marketable claim.</td><td>OTP is irreversible; never burn it on a primary rig. Do not imply secure boot or encrypted boot is enabled.</td></tr>
+  <tr><td>36</td><td><span class="badge ok">CLOSED (with reclassification)</span></td><td>BYE/peer-BYE zeroizes derived keys, PSK copies, ECDH state and nonce buffers; host 10 tests with disassembly at two optimisation levels; firmware re-derives keys on next handshake; zero plaintext secrets logged.</td><td class="derived">An orderly teardown leaves no live key material behind.</td><td>Watchdog/brownout RAM wipe is impossible on RP2350 (no pre-reset callback) &mdash; recorded as accepted residual risk in 38, not a test.</td></tr>
+  <tr><td>38</td><td><span class="badge ok">CLOSED</span></td><td>Documented that possession defeats PSK and flash readout; evaluated and rejected tamper seals as security, enclosure switches and biometrics; recommended the smallest honest control set; datasheet Limitations text supplied.</td><td class="derived">The threat model is explicit and evidence-driven, and the project refuses security theater.</td><td>This is analysis, not a control. Possession/coercion remain accepted residual risk.</td></tr>
+  <tr><td>39</td><td><span class="badge ok">CLOSED</span></td><td>AP prints its BSSID; STA locks to `88:a2:9e:5b:ff:69`, verifies at runtime, logs `BSSID MISMATCH`, increments counter and disconnects; clean power-cycle link with lock active; provisioning script verified statically.</td><td class="derived">An impostor cloning only the SSID and password cannot take the STA.</td><td>BSSID is a configurable identifier, not a cryptographic identity; it can be spoofed by a determined attacker.</td></tr>
+</table>
+
+<h2>6. Proof, process and UI &mdash; tickets 24&ndash;30, 37</h2>
+<table class="ledger">
+  <tr><th>Ticket</th><th>Status</th><th>PROVEN</th><th>DERIVED / marketable</th><th>Boundary</th></tr>
+  <tr><td>24&ndash;28</td><td><span class="badge todo">OPEN / PARKED</span></td><td>UI art/layout work only.</td><td class="derived">None of these are product claims today.</td><td>Do not claim link-truth HUD, help legend, splash, legibility pass, demo video, or a visual link-state reference.</td></tr>
+  <tr><td>27</td><td><span class="badge todo">OPEN</span></td><td>Protocol note covers frame, key schedule and SFO caveat.</td><td class="derived">The protocol is documented well enough to review.</td><td>Demo video, tagged release and audit/hash cross-check are not done.</td></tr>
+  <tr><td>30</td><td><span class="badge ok">CLOSED</span></td><td>OAuth grant revoked, config updated, `get_me` verified as `GoodFractals`, push works, no old token in config/history.</td><td class="derived">Operational credential hygiene &mdash; nothing leaked lives in the repo.</td><td>Bookkeeping, not a product capability.</td></tr>
+  <tr><td>37</td><td><span class="badge todo">OPEN</span></td><td>None yet (freeze, reviewer pack, findings, remediation all outstanding).</td><td class="derived">No marketable claim.</td><td><strong>The datasheet may say "reviewed" only after this completes.</strong> Do not imply independent validation.</td></tr>
+</table>
+
+<h2>7. Sentences you can safely say out loud</h2>
+<p>Each line below is assembled only from <span class="badge ok">PROVEN</span> rows. Keep the ticket numbers in parentheses when you write them down.</p>
+<ul>
+  <li>"Two Pico 2 W boards run one firmware source, with a full UI, input path and codec on <em>both</em> boards; `IS_AP` selects only the Wi-Fi role." (01&ndash;09)</li>
+  <li>"DATA is encrypted, and we captured 73 AP DATA frames in a no-PSK RF capture with zero plaintext hits." (12, 14)</li>
+  <li>"Replay, bit-flip tamper and wrong-PSK handshakes are rejected on hardware and logged with distinct counters." (11&ndash;14)</li>
+  <li>"Sessions use ephemeral X25519 forward secrecy and a per-frame key ratchet; both were verified on the boards with zero crypto errors." (31, 33)</li>
+  <li>"Frame metadata is masked with keys derived from the ECDH session, not the static PSK, after the handshake." (34)</li>
+  <li>"Either board can reboot and the pair re-links in under 10 seconds, 10 out of 10 times." (18)</li>
+  <li>"A forced software hang is recovered by the watchdog in under 8 seconds and the link comes back." (19)</li>
+  <li>"The STA refuses to join an AP with the wrong hardware address, even if the SSID and password match." (39)</li>
+  <li>"Every build prints a short source hash, so a log can be tied to an exact tree." (02)</li>
+</ul>
+
+<h2>8. Sentences you must not say</h2>
+<div class="callout">
+  <strong>"Untethered / all-day battery operation."</strong> Tickets 22 and 23 are open. Say "cable-connected PoC; power-rig validation planned".<br>
+  <strong>"24-hour soak passed" / "zero leaks over a day."</strong> Ticket 21 is open. Only short soaks (95 s, 1 h) are proven.<br>
+  <strong>"MAC-layer SFO / covert channel."</strong> Our SFO is application-layer telemetry; the CYW43 MAC/PHY is untouched (15, 16, 29; Lesson 001).<br>
+  <strong>"Independently reviewed / audited."</strong> Ticket 37 is open.<br>
+  <strong>"Military-grade" / "NIST-approved crypto."</strong> Speck128 is a lightweight cipher chosen for this MCU, validated against published vectors.<br>
+  <strong>"Persistence verified" / "STATUS survives power cycle."</strong> The flash fix is applied but the power-cycle gate is pending (20).<br>
+  <strong>"Secure boot, encrypted boot, debug lock enabled."</strong> Ticket 35 is research only; OTP is untouched.<br>
+  <strong>"Covert, undetectable traffic."</strong> Ticket 29 reduces trivial fingerprints; tickets 17 and 22 (sniffer report and airtime cost) are open.
+</div>
+
+<h2>9. Test yourself</h2>
+<div class="quiz"><strong>We have a 95 s clean soak with STATUS writes enabled. Can we close ticket 20?</strong><br>
+<span class="answer">No. The flash over-read is fixed and the hang is gone, but ticket 20's acceptance criterion is counters surviving a power cycle. That re-test has not been done. Mechanism proven; persistence not yet proven.</span></div>
+<div class="quiz"><strong>The ESP32 saw no plaintext. Does that prove forward secrecy?</strong><br>
+<span class="answer">No. It proves a passive no-PSK observer sees ciphertext. Forward secrecy is a different property: a later PSK compromise cannot decrypt old sessions, and that is proved by ticket 31's KATs plus the hardware handshake, not by the RF capture.</span></div>
+<div class="quiz"><strong>Ticket 34 says "encrypted header". Can we claim the `proto_hdr` envelope with its separate 8-byte tag is on the wire?</strong><br>
+<span class="answer">No. The host module exists and is green, but firmware kept the 18-byte header and 8-byte auth field. What shipped is ECDH-key CTR masking of the header fields, authenticated by the existing tag. Say "masked with session-derived keys", not "AEAD-encrypted header with a second tag".</span></div>
+<div class="quiz"><strong>A recruiter asks if the link is "covert". What is the honest answer?</strong><br>
+<span class="answer">It is low-observable at the application layer: constant-length padded DATA, bounded-jitter decoys and a camouflaged SSID. It is not covert at the MAC/PHY layer, and there is no measured detection report yet (17, 22). Say "LPI-oriented", never "covert".</span></div>
+<div class="quiz"><strong>Which single ticket would let us claim "reviewed design"?</strong><br>
+<span class="answer">37. It is open. Until a reviewer actually completes the pack and findings are published, the datasheet must not use that word.</span></div>
+
+<h2>10. Sources in this repo</h2>
+<ul>
+  <li>Ticket files and evidence: <code>.scratch/phantom-link-v1/issues/*.md</code> (01&ndash;39).</li>
+  <li>Ticket 14 RF evidence: <code>logs/capture14/capture14_20261125_rf_evidence.md</code> &mdash; 73 AP DATA frames, zero plaintext hits.</li>
+  <li>Ticket 33/34 hardware verification: serial captures dated 2026-11-26, builds `2d10012` and its predecessors.</li>
+  <li>Ticket 20 root cause: <code>logs/watchdog_flash_fix_19.md</code> and the 2026-11-26 flash over-read finding.</li>
+  <li>Threat model and boundaries: ticket 38;Lesson 002 covers the moat map; Lesson 001 covers SFO vs true MAC-layer SFO.</li>
+</ul>
+<p class="small">[[RESOURCES.md]] &mdash; When a ticket closes, update the counts in section 0 and move its row before you repeat a claim in docs.</p>
+</body>
+</html>

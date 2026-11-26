@@ -203,6 +203,9 @@ static uint32_t hdr_eph_rx = 0;
 static uint32_t decoy_tx_count = 0;
 static uint32_t last_decoy_ms = 0;
 static uint32_t next_decoy_ms = DECOY_BASE_MS;
+#ifdef PHANTOM_DATA_PROBE
+static bool probe_tamper_next = false;
+#endif
 
 static sfo_telemetry_t sfo_tel;
 static uint32_t next_sfo_ms = SFO_BURST_MS;
@@ -581,6 +584,14 @@ static err_t send_frame_to(const ip_addr_t *dst, u16_t port, uint8_t type,
         printf("TX encode failed: %s\n", proto_status_str(status));
         return ERR_VAL;
     }
+#ifdef PHANTOM_DATA_PROBE
+    /* 'X' probe: flip one auth-tag byte after sealing so the peer must reject
+     * the frame with CRYPTO FAIL. Exercises the real AEAD verify path. */
+    if (probe_tamper_next) {
+        probe_tamper_next = false;
+        buf[len - 1u] ^= 0x01u;
+    }
+#endif
 
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, (u16_t)len, PBUF_RAM);
     if (!p) {
@@ -2300,6 +2311,15 @@ int main(void) {
         if (ch == 'T' || ch == 't') {
             static const uint8_t probe[] = {0x01u, 0x00u, 0x41u, 0x42u};
             printf("DATA probe: %s\n",
+                   send_data_frame(probe, sizeof probe, PROTO_FLAG_FINAL)
+                       ? "sent" : "failed");
+        }
+        // 'X' sends the same probe with a flipped auth byte; the peer must
+        // reject it (CRYPTO FAIL) rather than deliver it.
+        if (ch == 'X' || ch == 'x') {
+            static const uint8_t probe[] = {0x01u, 0x00u, 0x41u, 0x42u};
+            probe_tamper_next = true;
+            printf("DATA tamper probe: %s\n",
                    send_data_frame(probe, sizeof probe, PROTO_FLAG_FINAL)
                        ? "sent" : "failed");
         }
