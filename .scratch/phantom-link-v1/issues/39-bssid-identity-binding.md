@@ -5,7 +5,7 @@ modular SSID/password/BSSID configuration and runtime identity verification.
 
 **Blocked by:** 14
 
-**Status:** ready-for-human (hardware verified; commit pending)
+**Status:** closed (hardware verified 2026-11-23/25; provisioning script verified statically 2026-11-25)
 
 - [x] Modular config in `proto_netcfg.h` + generated `netcfg_local.h`.
 - [x] AP boots and prints its BSSID (`AP BSSID: ...`).
@@ -13,7 +13,10 @@ modular SSID/password/BSSID configuration and runtime identity verification.
 - [x] Runtime BSSID check logs `BSSID MISMATCH`, increments `bssid`, disconnects.
 - [x] Enrolled AP BSSID `88:a2:9e:5b:ff:69` in `netcfg_local.h`.
 - [x] Hardware: clean power cycle links with BSSID lock active; `SFO good` advancing.
-- [ ] Provisioning script for others to generate SSID/password and enroll BSSID.
+- [x] Provisioning script for others to generate SSID/password and enroll BSSID:
+      `tools/provision_pair.ps1` reads the AP BSSID from serial, generates a
+      random `TMOBILE-####` SSID + password, writes `netcfg_local.h`, rebuilds,
+      and optionally flashes. Parses clean; `gen_psk.ps1` also verified.
 
 ## Verification
 

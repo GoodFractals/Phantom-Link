@@ -814,20 +814,17 @@ static void status_save(uint32_t now) {
            (unsigned)status_slot, (unsigned)offset, (int)erase,
            (unsigned)rec.seq, (unsigned)STATUS_FLASH_BASE);
 #endif
-    uint32_t t0 = 0;
-#ifdef PHANTOM_BRINGUP_TRACE
-    t0 = time_us_32();
-#endif
-    // The CYW43 driver shares the RP2350 QSPI bus with XIP flash. Quiesce
-    // the async context before erasing/programming so the ROM flash routine
-    // cannot collide with an in-flight CYW43 SPI transfer.
-#ifdef PHANTOM_BRINGUP_TRACE
-    printf("SSAVE pre-quiesce\n");
-#endif
+    // Take the CYW43 async-context lock so no PIO-SPI transfer is in flight
+    // while the ROM flash routine owns the QSPI bus, then feed the watchdog
+    // around the erase/program (interrupts are off inside flash_range_*).
+    cyw43_arch_lwip_begin();
+    watchdog_update();
     irq = save_and_disable_interrupts();
     if (erase) flash_range_erase(STATUS_FLASH_BASE, FLASH_SECTOR_SIZE);
     flash_range_program(offset, (const uint8_t *)&rec, STATUS_SLOT_SIZE);
     restore_interrupts(irq);
+    watchdog_update();
+    cyw43_arch_lwip_end();
 #ifdef PHANTOM_BRINGUP_TRACE
     printf("SSAVE post-quiesce\n");
 #endif
