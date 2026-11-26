@@ -14,7 +14,12 @@
 - [x] SSID renamed to `TMOBILE-1219`; replay tooling updated.
 - [x] TX-power reduction investigated: Pico SDK 2.3.1 exposes no CYW43 TX-power API, so default unchanged.
 - [x] Session/seq/ack header fields are masked with a key-derived stream so frame metadata is not plaintext.
-- [ ] A sniffer-based detection report is produced with ticket 14 evidence.
+- [x] A sniffer-based detection report is produced with ticket 14 evidence.
+      `.scratch/phantom-link-v1/evidence/29-sniffer-detection-report.md`:
+      re-analysis of the password-less ESP32 capture found 73 constant-length
+      DATA frames (110 bytes on air), 7.615 bits/byte payload entropy and zero
+      known-plaintext hits. No detection probability or jitter claim is made —
+      the capture has no timestamps. Still not covert (SSID/BSSID/MAC visible).
 
 ## Explicit non-goals
 

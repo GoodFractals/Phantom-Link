@@ -48,7 +48,7 @@ ticket files and this index are what survive in git.
 | 22 | current table, idle hour, runtime within 20% of model |
 | 23 | untethered boot/link run, repeated once |
 | 27 | uncut demo video, clean tagged checkout builds |
-| 29 | sniffer detection report (17) + airtime cost (22) |
+| 29 | airtime cost (22); sniffer report done from existing ticket 14 capture |
 | 37 | published findings from a real human reviewer via PR |
 
 Ticket 35 was closed as research-only: its spare-board OTP acceptance gate was
