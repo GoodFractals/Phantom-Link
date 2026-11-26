@@ -17,6 +17,20 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
 file(SHA256 "${CMAKE_CURRENT_LIST_DIR}/main.c" PHANTOM_SOURCE_HASH)
 string(SUBSTRING "${PHANTOM_SOURCE_HASH}" 0 8 PHANTOM_BUILD_HASH)
 
+# Use SDK-bundled prebuilt host tools when available. Without this, CMake's
+# ExternalProject tries to build pioasm/picotool from source and requires a
+# host C++ compiler (MSVC), which isn't present in this environment.
+if(NOT TARGET pioasm AND EXISTS "$ENV{USERPROFILE}/.pico-sdk/tools/2.3.1/pioasm/pioasm.exe")
+    add_executable(pioasm IMPORTED GLOBAL)
+    set_property(TARGET pioasm PROPERTY IMPORTED_LOCATION
+        "$ENV{USERPROFILE}/.pico-sdk/tools/2.3.1/pioasm/pioasm.exe")
+endif()
+if(NOT TARGET picotool AND EXISTS "$ENV{USERPROFILE}/.pico-sdk/picotool/2.3.1/picotool/picotool.exe")
+    add_executable(picotool IMPORTED GLOBAL)
+    set_property(TARGET picotool PROPERTY IMPORTED_LOCATION
+        "$ENV{USERPROFILE}/.pico-sdk/picotool/2.3.1/picotool/picotool.exe")
+endif()
+
 pico_sdk_init()
 
 function(add_phantom_target target_name is_ap)
