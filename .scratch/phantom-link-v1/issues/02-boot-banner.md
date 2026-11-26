@@ -4,9 +4,10 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-human (code complete; one boot on each board closes it)
+**Status:** closed (hardware: banner observed on both boards before any Wi-Fi line; see `logs/boot_banner_02.md`)
 
-- [ ] AP and STA logs show the banner before any Wi-Fi line.
+- [x] AP and STA logs show the banner before any Wi-Fi line. Captured on both
+      boards during ticket 19 hardware work; see `logs/boot_banner_02.md`.
 - [x] The banner contains the protocol version and a short build hash derived at build time.
 - [x] The hash changes when `main.c` changes and is stable across rebuilds of the same tree.
 - [x] The banner is absent from the UI; it is a serial diagnostic only.
