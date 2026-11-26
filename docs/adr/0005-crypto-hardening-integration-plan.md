@@ -25,6 +25,31 @@ All four change the wire format or the key schedule. A board with any one of
 them enabled cannot talk to a board without it. So they must be integrated,
 flashed to **both** boards together, and verified as one acceptance pass.
 
+## Scope correction (2026-11-25)
+
+`proto_fs.c` is **not** an ECDH implementation. It only does the KDF/epoch
+binding on an ECDH shared secret supplied by the caller (`fs_derive_keys(psk,
+ecdh_shared, ...)`). The host test proves that KDF with RFC 7748 vectors, but
+there is **no X25519 key-pair generation or shared-secret computation anywhere
+in our code**. "Host module green" therefore does not mean forward secrecy
+works — it means one small piece of it is correct.
+
+The SDK does provide the pieces: `pico_mbedtls` with `MBEDTLS_ECDH_C` and
+`CURVE25519_ENABLED`. Ticket 31 is consequently a **new feature implementation**,
+not module wiring:
+
+1. Write an X25519 wrapper (ephemeral keypair per session, 32-byte public key,
+   shared-secret computation) using mbedTLS; add `pico_mbedtls` to the link.
+2. Extend HELLO/HELLO_ACK from 16-byte to 48-byte payloads (add public key) —
+   a wire-format change on both boards.
+3. Feed the shared secret into `fs_derive_keys`, replacing static keys for
+   session traffic.
+4. Add an ECDH/KDF KAT that gates LINK UP.
+5. Flash both boards together and verify the full T2–T12 matrix.
+
+This is a full session of work and the foundation 33/34/32 build on. Do not
+understate it as "integration."
+
 ## Integration surface (exact call sites in main.c)
 
 1. **Build**: add `proto/proto_fs.c`, `proto/proto_ratchet.c`, `proto/proto_hdr.c`
