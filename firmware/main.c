@@ -120,6 +120,13 @@ _Static_assert(sizeof(GLYPHS) - 1 == 49, "transport alphabet must have 49 codes"
 // --- UI layout ---------------------------------------------------------------
 typedef struct { int x1, y1, x2, y2; } BoxRect;
 
+/* Ticket 24: named UI regions. Drawing code uses these instead of scattering
+ * literal coordinates; no protocol or timing constant lives here. */
+typedef struct { uint8_t x, y, w, h; } UiRect;
+static const UiRect UI_SIGNAL_CELL = { 98, 21, 20, 18 };
+static const UiRect UI_BAT_CELL = { 88, 42, 32, 11 };
+static const UiRect UI_LINK_MARK = { 99, 59, 4, 4 };
+
 static const BoxRect alpha_boxes[4][3] = {
     { {7, 21, 31, 31}, {49, 21, 72, 31}, {93, 21, 116, 31} },
     { {7, 32, 29, 42}, {49, 32, 72, 42}, {93, 32, 117, 42} },
@@ -131,9 +138,9 @@ static const BoxRect alpha_boxes[4][3] = {
 // [2][2] is BAT:. The numeric bottom-right [3][2] is the LINK indicator, not a
 // punctuation key; the alpha page is the only page with a punctuation key.
 static const BoxRect numeric_boxes[4][3] = {
-    { {7, 20, 40, 30}, {49, 20, 80, 30}, {0, 0, 0, 0} },       // 123   IN RANGE?   [ . ]
+    { {7, 20, 40, 30}, {0, 0, 0, 0},     {0, 0, 0, 0} },       // 123   (dead)      [ . ]
     { {7, 31, 40, 41}, {0, 0, 0, 0},     {0, 0, 0, 0} },       // 456
-    { {7, 42, 40, 52}, {49, 42, 80, 52}, {0, 0, 0, 0} },       // 789   SOS         BAT:
+    { {7, 42, 40, 52}, {0, 0, 0, 0},     {0, 0, 0, 0} },       // 789   (dead)      BAT:
     { {7, 53, 40, 63}, {52, 55, 70, 64}, {0, 0, 0, 0} }        // 0=+-  SPACE       LINK
 };
 
@@ -1567,18 +1574,55 @@ static void tx_tick(uint32_t now) {
 }
 
 // --- UI -----------------------------------------------------------------------
-static void draw_text_tail(int y, const char *text) {
+/* Ticket 24/26: the old fixed "last 21 characters" tail could clip because the
+ * font is variable-width (worst case 21 x 6 = 126 of 128 px). Walk back from
+ * the end using real glyph widths and stop before a right margin, so every
+ * end-character fits. Prefixes are empty until the user's baked TX:/RX: art
+ * lands; swapping them is then a two-line change. */
+#define UI_TEXT_RIGHT_PAD 4u
+static const char *ui_prefix_tx = "";
+static const char *ui_prefix_rx = "";
+
+static int ui_glyph_width(char ch) {
+    int idx = font_index_for_char(ch);
+    if (idx < 0 || idx >= font_char_count) return (ch == ' ') ? 3 : 6;
+    return font_widths[idx] + 1; /* renderer advances width + 1 */
+}
+
+static int ui_text_width(const char *text) {
+    int w = 0;
+    for (const char *p = text; *p; p++) w += ui_glyph_width(*p);
+    return w > 0 ? w - 1 : 0;      /* last glyph has no trailing gap */
+}
+
+static void draw_text_tail(int y, const char *text, const char *prefix) {
     if (!text || !*text) return;
 
+    int prefix_w = prefix ? ui_text_width(prefix) : 0;
+    int budget = 128 - (int)UI_TEXT_RIGHT_PAD - prefix_w;
     size_t len = strlen(text);
-    if (len > MAX_TEXT_CHARS) {
-        text += len - MAX_TEXT_CHARS;
-        len = MAX_TEXT_CHARS;
+    size_t start = len;
+    int used = 0;
+
+    while (start > 0) {
+        int cw = ui_glyph_width(text[start - 1u]);
+        if (used + cw > budget) break;
+        used += cw;
+        start--;
     }
 
-    char line[MAX_TEXT_CHARS + 1];
-    memcpy(line, text, len);
-    line[len] = '\0';
+    char line[MAX_TEXT_CHARS + 8u];
+    size_t n = 0;
+    if (prefix && *prefix) {
+        size_t plen = strlen(prefix);
+        if (plen > MAX_TEXT_CHARS) plen = MAX_TEXT_CHARS;
+        memcpy(line, prefix, plen);
+        n = plen;
+    }
+    size_t tail = len - start;
+    if (n + tail > sizeof line - 1u) tail = sizeof line - 1u - n;
+    memcpy(line + n, text + start, tail);
+    line[n + tail] = '\0';
     oled_draw_custom_string(0, y, line);
 }
 
@@ -1618,21 +1662,38 @@ static void hud_tick(uint32_t now) {
 static void draw_status_hud(void) {
     static const uint8_t bar_x[4] = { 98, 103, 108, 113 };
     static const uint8_t bar_h[4] = { 5, 9, 13, 17 };
-    const int baseline = 38; // bottom pixel row inside the bracket cell
+    const int baseline = UI_SIGNAL_CELL.y + UI_SIGNAL_CELL.h - 1;
 
-    // Clear the cell interior every frame. The baked art still carries a
-    // placeholder dot until the art pass; drawing over the top of it would
-    // leave stray pixels between the bars.
-    oled_fill_rect(98, 21, 20, 18, false);
+    /* Clear baked placeholders every frame: the signal cell still carries a
+     * dot and the BAT cell a fake label until this art pass. */
+    oled_fill_rect(UI_SIGNAL_CELL.x, UI_SIGNAL_CELL.y,
+                   UI_SIGNAL_CELL.w, UI_SIGNAL_CELL.h, false);
+    oled_fill_rect(UI_BAT_CELL.x, UI_BAT_CELL.y,
+                   UI_BAT_CELL.w, UI_BAT_CELL.h, false);
+
     for (int i = 0; i < signal_bars && i < 4; i++) {
         oled_fill_rect(bar_x[i], baseline - bar_h[i], 4, bar_h[i], true);
     }
 
-    // Filled square beside "LINK" means up; hollow square means down.
+    /* BAT cell shows TX/RX activity, never a fake charge gauge. */
+    if (tx_active()) {
+        oled_fill_rect(UI_BAT_CELL.x + 2u, UI_BAT_CELL.y + 3u, 8u, 4u, true);
+    } else if (rx_message_len > 0) {
+        oled_fill_rect(UI_BAT_CELL.x + 20u, UI_BAT_CELL.y + 3u, 8u, 4u, true);
+    }
+
+    /* LINK: filled square = UP, X = NO LINK (a different shape, not just a
+     * missing fill). The baked "LINK" label stays visible beside the mark. */
     if (link_state == LINK_UP) {
-        oled_fill_rect(99, 59, 4, 4, true);
+        oled_fill_rect(UI_LINK_MARK.x, UI_LINK_MARK.y,
+                       UI_LINK_MARK.w, UI_LINK_MARK.h, true);
     } else {
-        oled_draw_box(99, 59, 3, 3);
+        for (int i = 0; i < 4; i++) {
+            oled_fill_rect((uint8_t)(UI_LINK_MARK.x + i),
+                           (uint8_t)(UI_LINK_MARK.y + i), 1u, 1u, true);
+            oled_fill_rect((uint8_t)(UI_LINK_MARK.x + i),
+                           (uint8_t)(UI_LINK_MARK.y + 3u - i), 1u, 1u, true);
+        }
     }
 }
 
@@ -1648,24 +1709,28 @@ static void drawMainUI(void) {
                         ? alpha_boxes[cursor_row][cursor_col]
                         : numeric_boxes[cursor_row][cursor_col];
         if (b.x2 > b.x1 && b.y2 > b.y1) {
-            // w/h are extents, so +2 surrounds the hit box.
-            oled_draw_box(b.x1 - 1, b.y1 - 1, b.x2 - b.x1 + 2, b.y2 - b.y1 + 2);
+            /* Main (alpha) page: visible outline sits 1 px up and 1 px left
+             * of the stored hit box, per the user's pixel-perfect spec.
+             * Numeric page is unchanged until its own alignment pass. */
+            int ox = (current_page == 0) ? b.x1 - 2 : b.x1 - 1;
+            int oy = (current_page == 0) ? b.y1 - 2 : b.y1 - 1;
+            oled_draw_box(ox, oy, b.x2 - b.x1 + 2, b.y2 - b.y1 + 2);
         }
     }
 
     bool notice = tx_notice[0] != '\0' &&
                   (int32_t)(now_ms() - tx_notice_until) < 0;
     if (msg_length > 0) {
-        draw_text_tail(0, current_message);
+        draw_text_tail(0, current_message, "");
         if (notice) {
-            draw_text_tail(8, tx_notice);
+            draw_text_tail(8, tx_notice, ui_prefix_tx);
         } else if (rx_message_len > 0) {
-            draw_text_tail(8, rx_message);
+            draw_text_tail(8, rx_message, ui_prefix_rx);
         }
     } else if (notice) {
-        draw_text_tail(0, tx_notice);
+        draw_text_tail(0, tx_notice, ui_prefix_tx);
     } else if (rx_message_len > 0) {
-        draw_text_tail(0, rx_message);
+        draw_text_tail(0, rx_message, ui_prefix_rx);
     }
 
     if (current_page == 1) draw_status_hud();
@@ -1708,35 +1773,6 @@ static void append_char(char c) {
     }
 }
 
-static void request_ping(void) {
-    if (link_state != LINK_UP) {
-        printf("NO LINK\n");
-        return;
-    }
-    if (send_control_frame(PROTO_TYPE_PING)) {
-        manual_ping = true;
-        manual_ping_ms = now_ms();
-        printf("PING sent\n");
-    } else {
-        printf("PING send failed\n");
-    }
-}
-
-static void load_and_send_sos(void) {
-    if (tx_active()) {
-        printf("TX busy\n");
-        return;
-    }
-    if (link_state != LINK_UP) {
-        printf("NO LINK\n");
-        return;
-    }
-    snprintf(current_message, sizeof(current_message), "SOS");
-    msg_length = 3;
-    reset_tap();
-    start_send();
-}
-
 static void handle_select_button(uint32_t now) {
     if ((uint32_t)(now - last_tap_ms) > TAP_TIMEOUT_MS) {
         reset_tap();
@@ -1761,16 +1797,8 @@ static void handle_select_button(uint32_t now) {
             return;
         }
     } else {
-        if (cursor_row == 0 && cursor_col == 1) { // IN RANGE?
-            reset_tap();
-            request_ping();
-            return;
-        }
-        if (cursor_row == 2 && cursor_col == 1) { // SOS
-            reset_tap();
-            load_and_send_sos();
-            return;
-        }
+        // Rows 0 and 2 column 1 are dead (no cursor, no handler, no baked
+        // label drawn). Only SPACE remains selectable here.
         if (cursor_row == 3 && cursor_col == 1) { // SPACE
             append_char(' ');
             reset_tap();

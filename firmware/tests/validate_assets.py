@@ -144,13 +144,16 @@ def main() -> int:
     def nonzero(box: tuple[int, int, int, int]) -> bool:
         return box[2] > box[0] and box[3] > box[1]
 
+    assert not nonzero(boxes[1]), "[0][1] IN RANGE? cell must be dead (ticket 24)"
     assert not nonzero(boxes[4]), "[1][1] must stay empty"
-    assert nonzero(boxes[7]), "SOS must be at [2][1]"
+    assert not nonzero(boxes[7]), "SOS [2][1] cell must be dead (ticket 24)"
     assert nonzero(boxes[10]), "SPACE must be at [3][1]"
     assert not nonzero(boxes[11]), "the LINK indicator at [3][2] must not be a key"
-    assert "cursor_row == 2 && cursor_col == 1" in main_text
+    # The numeric branch must not select the dead column-1 cells; the alpha
+    # page still legitimately uses row 2/col 1 for its STU group.
+    assert "Rows 0 and 2 column 1 are dead" in main_text
     assert "group_index = 13" not in main_text
-    print("numeric UI: SOS [2][1], SPACE [3][1], LINK [3][2] indicator")
+    print("numeric UI: dead [0][1]/[2][1], SPACE [3][1], LINK [3][2] indicator")
 
     # HELLO_ACK send is now unconditional in the deferred-ECDH path; the
     # failure case logs, while success is decided by the deferred derivation.
