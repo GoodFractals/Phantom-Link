@@ -1599,9 +1599,9 @@ static int ui_text_width(const char *text) {
 
 /* Exact text origins from the final art: RX (15,2), TX (16,12). */
 #define UI_RX_TEXT_X 15
-#define UI_RX_TEXT_Y 2
+#define UI_RX_TEXT_Y 0
 #define UI_TX_TEXT_X 16
-#define UI_TX_TEXT_Y 12
+#define UI_TX_TEXT_Y 8
 
 static void draw_text_tail(int x, int y, const char *text, const char *prefix) {
     if (!text || !*text) return;
