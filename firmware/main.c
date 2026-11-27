@@ -127,11 +127,13 @@ static const UiRect UI_SIGNAL_CELL = { 98, 21, 20, 18 };
 static const UiRect UI_BAT_CELL = { 88, 42, 32, 11 };
 static const UiRect UI_LINK_MARK = { 99, 59, 4, 4 };
 
+/* Pixel-perfect coordinates from the user's final 128x64 art. These are both
+ * the hit boxes and the exact visible outlines (no -1/+2 expansion). */
 static const BoxRect alpha_boxes[4][3] = {
-    { {7, 21, 31, 31}, {49, 21, 72, 31}, {93, 21, 116, 31} },
-    { {7, 32, 29, 42}, {49, 32, 72, 42}, {93, 32, 117, 42} },
-    { {7, 43, 30, 53}, {49, 43, 73, 53}, {88, 43, 120, 53} },
-    { {7, 54, 30, 64}, {52, 55, 70, 64}, {84, 53, 124, 64} }
+    { {6, 21, 30, 31},  {49, 21, 72, 31},  {94, 21, 117, 31} },  // SEND ABC DEF
+    { {7, 32, 29, 42},  {49, 32, 72, 42},  {94, 32, 117, 42} },  // GHI JKL MNO
+    { {7, 43, 30, 53},  {49, 43, 73, 53},  {90, 43, 122, 53} },  // PQR STU WXYZ
+    { {7, 54, 32, 64},  {52, 55, 70, 64},  {84, 53, 124, 64} }   // 123+ SPC PUNC
 };
 
 // Only non-zero rectangles are selectable. [0][2] is the [ . ] indicator and
@@ -1595,11 +1597,17 @@ static int ui_text_width(const char *text) {
     return w > 0 ? w - 1 : 0;      /* last glyph has no trailing gap */
 }
 
-static void draw_text_tail(int y, const char *text, const char *prefix) {
+/* Exact text origins from the final art: RX (15,2), TX (16,12). */
+#define UI_RX_TEXT_X 15
+#define UI_RX_TEXT_Y 2
+#define UI_TX_TEXT_X 16
+#define UI_TX_TEXT_Y 12
+
+static void draw_text_tail(int x, int y, const char *text, const char *prefix) {
     if (!text || !*text) return;
 
     int prefix_w = prefix ? ui_text_width(prefix) : 0;
-    int budget = 128 - (int)UI_TEXT_RIGHT_PAD - prefix_w;
+    int budget = 128 - x - (int)UI_TEXT_RIGHT_PAD - prefix_w;
     size_t len = strlen(text);
     size_t start = len;
     int used = 0;
@@ -1623,7 +1631,7 @@ static void draw_text_tail(int y, const char *text, const char *prefix) {
     if (n + tail > sizeof line - 1u) tail = sizeof line - 1u - n;
     memcpy(line + n, text + start, tail);
     line[n + tail] = '\0';
-    oled_draw_custom_string(0, y, line);
+    oled_draw_custom_string(x, y, line);
 }
 
 // --- Status HUD ---------------------------------------------------------------
@@ -1700,37 +1708,29 @@ static void draw_status_hud(void) {
 static void drawMainUI(void) {
     memcpy(oled_buffer, (current_page == 0) ? alpha_image : numeric_image, 1024);
 
-    // The header rows (0-15) are the live message area. Clearing them stops
-    // text from chewing holes in the baked art and hides the stale labels.
-    memset(oled_buffer, 0, 256);
+    /* Final art bakes RX:/TX: into x0..14 of the top rows. Clear only the
+     * message strip to the right of those labels, not the whole header. */
+    oled_fill_rect(15, 0, 110, 20, false);
 
     if (ui_active) {
         BoxRect b = (current_page == 0)
                         ? alpha_boxes[cursor_row][cursor_col]
                         : numeric_boxes[cursor_row][cursor_col];
         if (b.x2 > b.x1 && b.y2 > b.y1) {
-            /* Main (alpha) page: visible outline sits 1 px up and 1 px left
-             * of the stored hit box, per the user's pixel-perfect spec.
-             * Numeric page is unchanged until its own alignment pass. */
-            int ox = (current_page == 0) ? b.x1 - 2 : b.x1 - 1;
-            int oy = (current_page == 0) ? b.y1 - 2 : b.y1 - 1;
-            oled_draw_box(ox, oy, b.x2 - b.x1 + 2, b.y2 - b.y1 + 2);
+            /* Exact extents from the user's table: no expansion, no offset. */
+            oled_draw_box(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
         }
     }
 
     bool notice = tx_notice[0] != '\0' &&
                   (int32_t)(now_ms() - tx_notice_until) < 0;
-    if (msg_length > 0) {
-        draw_text_tail(0, current_message, "");
-        if (notice) {
-            draw_text_tail(8, tx_notice, ui_prefix_tx);
-        } else if (rx_message_len > 0) {
-            draw_text_tail(8, rx_message, ui_prefix_rx);
-        }
-    } else if (notice) {
-        draw_text_tail(0, tx_notice, ui_prefix_tx);
-    } else if (rx_message_len > 0) {
-        draw_text_tail(0, rx_message, ui_prefix_rx);
+    if (rx_message_len > 0) {
+        draw_text_tail(UI_RX_TEXT_X, UI_RX_TEXT_Y, rx_message, ui_prefix_rx);
+    }
+    if (notice) {
+        draw_text_tail(UI_TX_TEXT_X, UI_TX_TEXT_Y, tx_notice, ui_prefix_tx);
+    } else if (msg_length > 0) {
+        draw_text_tail(UI_TX_TEXT_X, UI_TX_TEXT_Y, current_message, "");
     }
 
     if (current_page == 1) draw_status_hud();
