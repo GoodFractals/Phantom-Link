@@ -15,7 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define TXQ_DEPTH 64u
+#define TXQ_DEPTH 256u  /* 255 symbols + 1 FINAL for an 85-glyph message */
 #define TXQ_PAYLOAD_MAX 4u
 
 typedef struct {
@@ -26,9 +26,9 @@ typedef struct {
 
 typedef struct {
     txq_item_t items[TXQ_DEPTH];
-    uint8_t head;
-    uint8_t tail;
-    uint8_t count;
+    uint16_t head;   /* TXQ_DEPTH can exceed 255 for long messages */
+    uint16_t tail;
+    uint16_t count;
     uint32_t enqueued;
     uint32_t sent;
     uint32_t dropped;
@@ -40,7 +40,7 @@ bool txq_enqueue(txq_t *q, const txq_item_t *item);
 bool txq_peek(const txq_t *q, txq_item_t *out);
 bool txq_dequeue(txq_t *q, txq_item_t *out);
 void txq_clear(txq_t *q);
-uint8_t txq_count(const txq_t *q);
+uint16_t txq_count(const txq_t *q);
 bool txq_empty(const txq_t *q);
 bool txq_full(const txq_t *q);
 

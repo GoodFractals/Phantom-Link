@@ -28,7 +28,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define PROTO_MSG_MAX_CHARS 21u
+#define PROTO_MSG_MAX_CHARS 85u   /* 85 * 3 = 255 symbols, the uint8 pos ceiling */
 #define PROTO_MSG_MAX_SYMBOLS (PROTO_MSG_MAX_CHARS * 3u)
 #define PROTO_MSG_SYMBOL_PAYLOAD 4u
 #define PROTO_MSG_FINAL_PAYLOAD 3u

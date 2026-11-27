@@ -216,7 +216,27 @@ static void test_tx_bounded_failure(void) {
     CHECK(tx.pos == 0);
 }
 
+static void test_max_length_message(void) {
+    proto_msg_rx_t rx;
+    char long_text[PROTO_MSG_MAX_CHARS + 1u];
+    uint8_t i;
+
+    /* 85 glyphs = 255 symbols, exactly the uint8_t pos ceiling. */
+    for (i = 0; i < PROTO_MSG_MAX_CHARS; i++) {
+        long_text[i] = ALPHABET[i % ALPHABET_LEN];
+    }
+    long_text[PROTO_MSG_MAX_CHARS] = '\0';
+    CHECK((int)strlen(long_text) == PROTO_MSG_MAX_CHARS);
+
+    proto_msg_rx_init(&rx, ALPHABET, ALPHABET_LEN);
+    CHECK(feed_all(&rx, 77, long_text) == PROTO_MSG_EV_COMPLETE);
+    CHECK(rx.total_symbols == 255u);
+    CHECK(proto_msg_rx_len(&rx) == PROTO_MSG_MAX_CHARS);
+    CHECK(strcmp(proto_msg_rx_text(&rx), long_text) == 0);
+}
+
 int main(void) {
+    test_max_length_message();
     test_rx_in_order_and_duplicate_final();
     test_rx_gap_and_resume();
     test_rx_whole_message_retry();

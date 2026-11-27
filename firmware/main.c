@@ -106,7 +106,7 @@ static uint32_t watchdog_test_start = 0;
 #define JOY_LOW 1000
 #define JOY_HIGH 3000
 #define BUTTON_DEBOUNCE_MS 20
-#define MAX_TEXT_CHARS 21
+#define MAX_TEXT_CHARS 85   /* 85 glyphs * 3 symbols = 255 = uint8_t pos ceiling */
 #define SESSION_STATS_MS 30000
 
 // --- Base-6 transport alphabet ------------------------------------------------
@@ -159,8 +159,14 @@ static int current_page = 0;
 static int cursor_row = 0;
 static int cursor_col = 0;
 static bool ui_active = true;
-static char current_message[64] = "";
+static char current_message[MAX_TEXT_CHARS + 1u] = "";
 static int msg_length = 0;
+/* Ticket: a send attempted while unlinked is held for auto-resend on re-link.
+ * Cleared on delivery or explicit DELETE; never persisted to flash. */
+static bool pending_resend = false;
+/* set_link_up() can run inside the lwIP callback; arm here and let the main
+ * loop do the actual send on its own stack with the fresh session keys. */
+static bool resend_on_next_loop = false;
 static int active_group = -1;
 static int tap_count = 0;
 static uint32_t last_tap_ms = 0;
@@ -168,7 +174,7 @@ static uint32_t last_tap_ms = 0;
 // --- Received message ---------------------------------------------------------
 // Kept separate from current_message so an inbound packet cannot overwrite a
 // draft while the user is typing. The assembler holds at most 21 characters.
-static char rx_message[64] = "";
+static char rx_message[MAX_TEXT_CHARS + 1u] = "";
 static int rx_message_len = 0;
 static proto_msg_rx_t rx_msg;
 
@@ -361,6 +367,12 @@ static void unmask_header_fields(uint8_t *buf) {
 static void register_key_secrets(void) {
     zeroize_tracker_register(&zeroizer, psk_tx_key, sizeof psk_tx_key);
     zeroize_tracker_register(&zeroizer, psk_rx_key, sizeof psk_rx_key);
+    /* Message plaintext is a secret too: register the copies declared before
+     * this point so BYE and peer-BYE wipe them along with the keys. tx_msg is
+     * declared later and is registered in register_tx_secret() below. */
+    zeroize_tracker_register(&zeroizer, current_message, sizeof current_message);
+    zeroize_tracker_register(&zeroizer, rx_message, sizeof rx_message);
+    zeroize_tracker_register(&zeroizer, rx_msg.text, sizeof rx_msg.text);
     keys_cleared = false;
 }
 
@@ -496,6 +508,14 @@ static uint32_t last_session_stats_ms = 0;
 
 // --- Transmit state machine ---------------------------------------------------
 static proto_msg_tx_t tx_msg;
+static bool tx_secret_registered = false;
+
+static void register_tx_secret(void) {
+    if (tx_secret_registered) return;
+    zeroize_tracker_register(&zeroizer, tx_msg.text, sizeof tx_msg.text);
+    tx_secret_registered = true;
+}
+
 static txq_t tx_queue;
 static uint32_t tx_next_ms = 0;
 static uint32_t tx_frames = 0;
@@ -519,8 +539,11 @@ static void tx_clear_delivered_draft(void) {
     if (msg_length != (int)tx_msg.len) return;
     if (memcmp(current_message, tx_msg.text, (size_t)tx_msg.len) != 0) return;
 
+    /* Volatile wipe of every plaintext copy; a null terminator was not enough. */
+    zeroize(current_message, sizeof current_message);
+    zeroize(tx_msg.text, sizeof tx_msg.text);
     msg_length = 0;
-    current_message[0] = '\0';
+    pending_resend = false;
     active_group = -1;
     tap_count = 0;
 }
@@ -749,6 +772,11 @@ static void set_link_up(const char *why) {
     } else {
         printf("LINK UP (%s)\n", why);
     }
+
+    if (pending_resend && !tx_active() && msg_length > 0) {
+        resend_on_next_loop = true;
+        printf("RESEND armed on link up\n");
+    }
 }
 
 static void set_link_down(const char *why) {
@@ -763,10 +791,12 @@ static void set_link_down(const char *why) {
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
 
     if (tx_active()) {
+        zeroize(tx_msg.text, sizeof tx_msg.text);
         proto_msg_tx_abort(&tx_msg);
         tx_frames = 0;
         tx_next_ms = 0;
         txq_clear(&tx_queue);
+        if (msg_length > 0) pending_resend = true;
         printf("TX aborted: no link\n");
     }
 
@@ -1269,6 +1299,9 @@ static void handle_frame(const proto_frame_view_t *frame, const ip_addr_t *addr,
 
         if (event == PROTO_MSG_EV_COMPLETE) {
             uint8_t len = proto_msg_rx_len(&rx_msg);
+            /* Wipe the previous received message before copying the next one;
+             * the tracker wipes this buffer on BYE as well. */
+            zeroize(rx_message, sizeof rx_message);
             memcpy(rx_message, proto_msg_rx_text(&rx_msg), (size_t)len + 1);
             rx_message_len = len;
 
@@ -1460,6 +1493,9 @@ static void abort_tx(const char *why) {
     if (tx_active()) {
         printf("TX aborted: %s\n", why);
     }
+    /* The draft stays on screen for a manual resend; the TX state's plaintext
+     * copy is a secret and must not linger after an abort. */
+    zeroize(tx_msg.text, sizeof tx_msg.text);
     txq_clear(&tx_queue);
     proto_msg_tx_abort(&tx_msg);
     tx_frames = 0;
@@ -1473,7 +1509,14 @@ static void start_send(void) {
         return;
     }
     if (link_state != LINK_UP) {
-        printf("NO LINK\n");
+        /* Hold the draft on screen and resend automatically once the link and
+         * session keys are back. No flash copy, no loss of typed text. */
+        if (msg_length > 0) {
+            pending_resend = true;
+            printf("NO LINK - queued for resend\n");
+        } else {
+            printf("NO LINK\n");
+        }
         return;
     }
     if (msg_length <= 0) {
@@ -1485,6 +1528,7 @@ static void start_send(void) {
         printf("TX begin failed\n");
         return;
     }
+    pending_resend = false;   /* a fresh attempt is now in flight */
 
     txq_clear(&tx_queue);
     if (!tx_enqueue_message()) {
@@ -1509,6 +1553,9 @@ static void start_send(void) {
 static void tx_failed(void) {
     printf("TX FAILED msg=%u attempts=%u\n", (unsigned)tx_msg.msg_id,
            (unsigned)tx_msg.attempt);
+    /* A failed send is retried on the next successful link-up, not instantly
+     * (that would loop while the link is still up but the peer is not ACK-ing). */
+    if (msg_length > 0) pending_resend = true;
 
     snprintf(tx_notice, sizeof tx_notice, "NO ACK");
     tx_notice_until = now_ms() + TX_NOTICE_MS;
@@ -1850,11 +1897,14 @@ static void handle_select_button(uint32_t now) {
 
 static void handle_delete_button(void) {
     if (tx_active()) {
+        /* Explicit DELETE is a user cancel, not a failure: do not auto-resend. */
+        pending_resend = false;
         abort_tx("DELETE");
         return;
     }
     if (msg_length > 0) {
         current_message[--msg_length] = '\0';
+        if (msg_length == 0) pending_resend = false;  /* draft erased */
     }
     reset_tap();
 }
@@ -2295,6 +2345,7 @@ int main(void) {
     trace_checkpoint("T1a");
     zeroize_tracker_init(&zeroizer);
     register_key_secrets();
+    register_tx_secret();
     trace_checkpoint("T1b");
     sfo_telemetry_init(&sfo_tel);
     trace_checkpoint("T1c");
@@ -2363,6 +2414,18 @@ int main(void) {
             memset(pending_peer_pub, 0, sizeof pending_peer_pub);
             pending_link_reason = NULL;
             watchdog_update();
+        }
+
+        /* Auto-resend on the main loop with the fresh ECDH keys, after keys
+         * are ready and the link is up. Never from the lwIP callback stack. */
+        if (resend_on_next_loop) {
+            resend_on_next_loop = false;
+            if (pending_resend && link_state == LINK_UP && sess_keys_ready &&
+                !tx_active() && msg_length > 0) {
+                printf("RESEND begin msg=%u chars=%u\n",
+                       (unsigned)tx_msg.next_msg_id, (unsigned)msg_length);
+                start_send();
+            }
         }
 
         int ch = getchar_timeout_us(0);

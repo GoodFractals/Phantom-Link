@@ -18,7 +18,7 @@ bool txq_enqueue(txq_t *q, const txq_item_t *item) {
         return false;
     }
     q->items[q->tail] = *item;
-    q->tail = (uint8_t)((q->tail + 1u) % TXQ_DEPTH);
+    q->tail = (uint16_t)((q->tail + 1u) % TXQ_DEPTH);
     q->count++;
     q->enqueued++;
     return true;
@@ -33,7 +33,7 @@ bool txq_peek(const txq_t *q, txq_item_t *out) {
 bool txq_dequeue(txq_t *q, txq_item_t *out) {
     if (!q || q->count == 0) return false;
     if (out) *out = q->items[q->head];
-    q->head = (uint8_t)((q->head + 1u) % TXQ_DEPTH);
+    q->head = (uint16_t)((q->head + 1u) % TXQ_DEPTH);
     q->count--;
     q->sent++;
     return true;
@@ -47,7 +47,7 @@ void txq_clear(txq_t *q) {
     q->count = 0;
 }
 
-uint8_t txq_count(const txq_t *q) {
+uint16_t txq_count(const txq_t *q) {
     return q ? q->count : 0;
 }
 

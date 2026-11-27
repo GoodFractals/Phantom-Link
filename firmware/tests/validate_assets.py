@@ -20,6 +20,8 @@ FIRMWARE = Path(__file__).resolve().parents[1]
 FONT = FIRMWARE / "font_ui.h"
 MAIN = FIRMWARE / "main.c"
 CMAKE = FIRMWARE / "CMakeLists.txt"
+PROTO_MSG = FIRMWARE / "proto" / "proto_msg.h"
+TXQ = FIRMWARE / "proto" / "proto_txq.h"
 
 
 def read(path: Path) -> str:
@@ -90,6 +92,8 @@ def main() -> int:
     font_text = read(FONT)
     main_text = read(MAIN)
     cmake_text = read(CMAKE)
+    proto_msg_text = read(PROTO_MSG)
+    txq_text = read(TXQ)
 
     image = parse_c_array("font_image", font_text)
     widths = parse_int_array("font_widths", font_text)
@@ -132,11 +136,14 @@ def main() -> int:
     )
     print("tap groups: all 49 characters reachable, V is the fifth WXYZ tap")
 
-    message = 'TEST 123 =+-.,?!()[]"'
-    assert len(message) == 21
+    # 85 glyphs * 3 symbols = 255, the uint8_t position ceiling.
+    message = ('TEST 123 =+-.,?!()[]"' * 5)[:85]
+    assert len(message) == 85
     assert codec_round_trip(glyphs, message) == message
-    assert "MAX_TEXT_CHARS 21" in main_text
-    print(f"message: {len(message)}-character full-glyph round-trip")
+    assert "MAX_TEXT_CHARS 85" in main_text
+    assert "PROTO_MSG_MAX_CHARS 85u" in proto_msg_text
+    assert "TXQ_DEPTH 256u" in txq_text
+    print(f"message: {len(message)}-character full-glyph round-trip (uint8 pos ceiling)")
 
     boxes = parse_numeric_boxes(main_text)
     assert len(boxes) == 12, f"expected 12 numeric boxes, found {len(boxes)}"
