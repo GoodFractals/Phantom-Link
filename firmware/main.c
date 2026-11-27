@@ -1599,11 +1599,12 @@ static int ui_text_width(const char *text) {
 
 /* Exact text origins from the final art: RX (15,2), TX (16,12). */
 #define UI_RX_TEXT_X 15
-#define UI_RX_TEXT_Y 0
+#define UI_RX_TEXT_Y 1   /* first ink row; uses the shifted-glyph renderer */
 #define UI_TX_TEXT_X 16
 #define UI_TX_TEXT_Y 8
 
-static void draw_text_tail(int x, int y, const char *text, const char *prefix) {
+static void draw_text_tail(int x, int y, const char *text, const char *prefix,
+                           bool exact_ink) {
     if (!text || !*text) return;
 
     int prefix_w = prefix ? ui_text_width(prefix) : 0;
@@ -1631,7 +1632,8 @@ static void draw_text_tail(int x, int y, const char *text, const char *prefix) {
     if (n + tail > sizeof line - 1u) tail = sizeof line - 1u - n;
     memcpy(line + n, text + start, tail);
     line[n + tail] = '\0';
-    oled_draw_custom_string(x, y, line);
+    if (exact_ink) oled_draw_custom_string_ink(x, y, line);
+    else oled_draw_custom_string(x, y, line);
 }
 
 // --- Status HUD ---------------------------------------------------------------
@@ -1727,12 +1729,12 @@ static void drawMainUI(void) {
     bool notice = tx_notice[0] != '\0' &&
                   (int32_t)(now_ms() - tx_notice_until) < 0;
     if (rx_message_len > 0) {
-        draw_text_tail(UI_RX_TEXT_X, UI_RX_TEXT_Y, rx_message, ui_prefix_rx);
+        draw_text_tail(UI_RX_TEXT_X, UI_RX_TEXT_Y, rx_message, ui_prefix_rx, true);
     }
     if (notice) {
-        draw_text_tail(UI_TX_TEXT_X, UI_TX_TEXT_Y, tx_notice, ui_prefix_tx);
+        draw_text_tail(UI_TX_TEXT_X, UI_TX_TEXT_Y, tx_notice, ui_prefix_tx, false);
     } else if (msg_length > 0) {
-        draw_text_tail(UI_TX_TEXT_X, UI_TX_TEXT_Y, current_message, "");
+        draw_text_tail(UI_TX_TEXT_X, UI_TX_TEXT_Y, current_message, "", false);
     }
 
     if (current_page == 1) draw_status_hud();

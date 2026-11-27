@@ -158,6 +158,42 @@ void oled_draw_custom_string(int x, int y, const char *text) {
     }
 }
 
+/* Draw text whose first INK row is `top_row`, not the font cell top. The
+ * generated glyphs carry ink in rows 4..7 of an 8-row cell, so this pre-shifts
+ * by -4 and handles a cell that starts before page 0 (RX label sits at row 1).
+ * Only the text path uses this; boxes and art are untouched. */
+void oled_draw_custom_string_ink(int x, int top_row, const char *text) {
+    if (!text || x < 0) return;
+    int base = top_row - 4;
+    int page = base / 8;
+    if (base < 0 && (base % 8) != 0) page -= 1;   /* floor division */
+    int shift = base - page * 8;                   /* 0..7 */
+
+    int cursor_x = x;
+    while (*text) {
+        char ch = *text++;
+        int index = font_index_for_char(ch);
+        if (index < 0 || index >= font_char_count) {
+            cursor_x += (ch == ' ') ? 2 : 5;
+            continue;
+        }
+        int width = font_widths[index];
+        int offset = font_offsets[index];
+        for (int col = 0; col < width; col++) {
+            int sx = cursor_x + col;
+            if (sx < 0 || sx >= 128) continue;
+            uint16_t bits = (uint16_t)font_image[offset + col] << shift;
+            if (page >= 0 && page < 8) {
+                oled_buffer[page * 128 + sx] |= (uint8_t)(bits & 0xFFu);
+            }
+            if (page + 1 >= 0 && page + 1 < 8) {
+                oled_buffer[(page + 1) * 128 + sx] |= (uint8_t)(bits >> 8);
+            }
+        }
+        cursor_x += width + 1;
+    }
+}
+
 void oled_draw_string(int x, int y, const char *text) {
     for (int i = 0; text[i] != '\0'; i++) {
         oled_draw_char(x + (i * 6), y, text[i]);
