@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 005 &mdash; Three kinds of proof</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+<link rel="stylesheet" href="../assets/brag.css">
+</head>
+<body>
+<p class="small">Phantom Link teaching workspace &mdash; Lesson 005 &mdash; [[MISSION.md]]</p>
+<h1>Three kinds of proof</h1>
+<p class="small">Read time: 6 minutes. One win: you can say exactly what TLA+, Z3 and CBMC prove, what they do not, and which one to reach for.</p>
+
+<div class="callout"><strong>Rule of the house:</strong> a proof is always a proof <em>about a model</em>. The map is not the territory. TLA+ checks a state machine you wrote, Z3 checks arithmetic you wrote, CBMC checks C within bounds you chose. None of them proves the physical board works — that is what the serial logs are for.</div>
+
+<h2>0. Why three tools, not one</h2>
+<p>Different questions need different kinds of answer. You caught the distinction yourself when you asked how we prove a button works a billion times: testing gives you samples; proof gives you a bound over a <em>model</em>.</p>
+<p>We use three tools because they answer three different questions:</p>
+<ul>
+  <li><strong>TLA+:</strong> can the state machine ever reach a bad state?</li>
+  <li><strong>Z3:</strong> is this arithmetic statement true for every possible input?</li>
+  <li><strong>CBMC:</strong> can this C function violate an assertion within these bounds?</li>
+</ul>
+
+<h2>1. TLA+ &mdash; check the state machine, not the code</h2>
+<p>You write a tiny model in <code>session.tla</code>: variables, an initial state, and the possible next steps. TLC (the model checker) explores <strong>every reachable state</strong> and checks your named invariants. Our session model has five variables and a deliberately tiny set of session IDs (0&ndash;3), so the whole graph is 13 states and finishes in one second.</p>
+<p><strong>What it proved:</strong> LINK UP never occurs without ECDH keys, session ID 0 never coexists with LINK UP, keys never exist without a session, and a pending ECDH derivation always has a session.</p>
+<p><strong>Boundary:</strong> we modelled five variables. The real firmware has radio state, lwIP callbacks, watchdog timing and a dozen other variables. TLC found no bug <em>in the model</em>. If the model is wrong, the proof is worthless — that is the whole craft.</p>
+<div class="callout"><strong>Think of it like:</strong> proving a chess puzzle has no checkmate in one. You enumerated every legal move. You did not prove your opponent plays well.</div>
+
+<h2>2. Z3 &mdash; an oracle for "is this always true?"</h2>
+<p>Z3 is a satisfiability solver. You give it a statement and it either finds a counterexample (<code>sat</code>) or proves none exists (<code>unsat</code>). Our script proves seven facts, including:</p>
+<ul>
+  <li>85 glyphs &times; 3 symbols = 255, which fits in a <code>uint8_t</code> position field;</li>
+  <li>a serial number cannot be simultaneously "newer" and "older" than another;</li>
+  <li>wraparound from <code>0xFFFFFFFF</code> to <code>0</code> is correctly recognised as newer;</li>
+  <li>an ID inside the 8-slot ratchet window is never treated as newer.</li>
+</ul>
+<p><strong>Boundary:</strong> Z3 proved arithmetic about <code>uint32</code> serial numbers and byte limits. It cannot tell you whether the KDF is collision-resistant or whether the radio works. And a proof is only as honest as the statement — my first script encoded a wrong definition of "older" and Z3 correctly reported a counterexample. The tool caught my mistake, not the code's.</p>
+<div class="callout"><strong>Think of it like:</strong> a calculator that never makes arithmetic mistakes, but only answers the exact question you typed.</div>
+
+<h2>3. CBMC &mdash; bounded checking of the C itself</h2>
+<p>CBMC takes real C code, replaces inputs with nondeterministic values, unwinds loops to a bound, and asks a SAT solver whether any input can violate an assertion. Our staged harness asks: can <code>proto_frame_decode</code> ever accept a frame whose payload pointer lands outside the buffer? Can encode/decode ever fail to round-trip a payload of 0&ndash;64 bytes?</p>
+<p><strong>Status here:</strong> harness written, <strong>not run</strong> — the Windows installer failed (MSI 1603). Do not let anyone tell you it passed.</p>
+<p><strong>Boundary:</strong> "bounded" means exactly that. It checks lengths up to the bound you chose. A bug requiring a longer input is not covered. It also does not prove the compiler generated correct machine code — that is what CompCert is for.</p>
+<div class="callout"><strong>Think of it like:</strong> checking every possible key on a keyring of a fixed size. A key you did not put on the ring was not tested.</div>
+
+<h2>4. Which one do I reach for?</h2>
+<table>
+  <tr><th>Question</th><th>Tool</th></tr>
+  <tr><td>"Can my protocol ever get into a bad state?"</td><td>TLA+</td></tr>
+  <tr><td>"Is this arithmetic true for every uint32?"</td><td>Z3</td></tr>
+  <tr><td>"Can this C function crash or read out of bounds?"</td><td>CBMC</td></tr>
+  <tr><td>"Does the radio actually link up?"</td><td>Serial log. No tool replaces hardware.</td></tr>
+</table>
+
+<h2>5. Test yourself</h2>
+<div class="quiz"><strong>TLC found no error in 13 states. What did it prove?</strong><br>
+A) The firmware has no bugs &nbsp; B) The model has no reachable bad state &nbsp; C) The radio works<br>
+<span class="answer">B &mdash; The model has no reachable bad state. Wrong model, worthless proof. Hardware logs stay separate.</span></div>
+<div class="quiz"><strong>Z3 returned 'unsat' for your statement. What happened?</strong><br>
+A) No counterexample exists &nbsp; B) The code is correct &nbsp; C) The tool timed out<br>
+<span class="answer">A &mdash; No counterexample exists for that statement. It says nothing about code you did not encode.</span></div>
+<div class="quiz"><strong>CBMC checked payloads up to 64 bytes. What about 65?</strong><br>
+A) Proven safe too &nbsp; B) Rejected by the compiler &nbsp; C) Outside the bound, not checked<br>
+<span class="answer">C &mdash; Outside the bound, not checked. Bounded means bounded; say so in the claim.</span></div>
+
+<h2>6. Go deeper</h2>
+<ul>
+  <li>Primary source: <a href="https://lamport.azurewebsites.net/tla/tla.html">Leslie Lamport's TLA+ page</a> &mdash; the authority on specifying systems.</li>
+  <li>Commands and status: <code>docs/verification/README.md</code> and <a href="../reference/verification-cheat-sheet.html">the verification cheat sheet</a>.</li>
+  <li>Why this matters for claims: <a href="0003-the-claims-ledger.html">Lesson 003</a>, boundary column.</li>
+</ul>
+<p class="small">Ask me follow-ups — especially "what would make this model wrong?" That question is where the real learning is. [[RESOURCES.md]]</p>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verification cheat sheet &mdash; Phantom Link</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+<link rel="stylesheet" href="../assets/brag.css">
+</head>
+<body>
+<p class="small">Phantom Link teaching workspace &mdash; quick reference &mdash; [[MISSION.md]]</p>
+<h1>Verification cheat sheet</h1>
+<p class="small">Three tools, three questions. Every row says what was actually run on 2026-11-26.</p>
+
+<div class="callout"><strong>Never say:</strong> "formally verified codebase." Say: "session model checked with TLC; protocol arithmetic proven with Z3; frame codec harness staged for CBMC; physical behavior verified on hardware."</div>
+
+<h2>Run it</h2>
+<table>
+  <tr><th>Tool</th><th>Command</th><th>Status</th></tr>
+  <tr><td>TLA+ / TLC</td><td><code>java -cp tla2tools.jar tlc2.TLC session.tla -config session.cfg -workers 4</code></td><td>RUN &middot; PASS &middot; 13 states</td></tr>
+  <tr><td>Z3</td><td><code>py -3 docs/verification/z3/protocol_bounds.py</code></td><td>RUN &middot; PASS &middot; 7 proofs</td></tr>
+  <tr><td>CBMC</td><td><code>cbmc frame_harness.c proto_frame.c --unwind 90 --bounds-check</code></td><td>STAGED &middot; NOT RUN (MSI 1603)</td></tr>
+  <tr><td>Host tests</td><td><code>ctest --test-dir firmware/host/build -C Release</code></td><td>RUN &middot; PASS &middot; 18/18</td></tr>
+</table>
+
+<h2>What each proves</h2>
+<div class="claim">
+<h3>TLA+ / TLC</h3>
+<p><span class="lbl">Checks</span> Every reachable state of the model against named invariants.</p>
+<p><span class="lbl">Ours</span> No LINK UP without ECDH keys; no zero session when up; keys need a session; pending needs HELLO.</p>
+<p><span class="lbl">Not</span> The C code, the radio, or a model you forgot to write.</p>
+</div>
+<div class="claim">
+<h3>Z3</h3>
+<p><span class="lbl">Checks</span> Whether a logical/arithmetic statement has a counterexample (<code>sat</code>) or not (<code>unsat</code>).</p>
+<p><span class="lbl">Ours</span> 85-glyph ceiling, queue depth, serial comparison asymmetry, wraparound, 8-slot window, ACK order.</p>
+<p><span class="lbl">Not</span> Cryptographic strength, compiler correctness, or hardware behavior.</p>
+</div>
+<div class="claim">
+<h3>CBMC</h3>
+<p><span class="lbl">Checks</span> C code against assertions, with loops unwound to a fixed bound.</p>
+<p><span class="lbl">Ours</span> Staged harness: frame decode bounds and encode/decode round-trip for 0&ndash;64 byte payloads.</p>
+<p><span class="lbl">Not</span> Anything beyond the chosen bounds; not yet run here.</p>
+</div>
+
+<h2>Vocabulary</h2>
+<ul>
+  <li><strong>Model:</strong> a simplified description you write. Proofs apply to it.</li>
+  <li><strong>Invariant:</strong> a property that must hold in every reachable state.</li>
+  <li><strong>Reachable state:</strong> any configuration the model can get into from Init.</li>
+  <li><strong>Bound:</strong> the maximum loop unwind / input size the checker considers.</li>
+  <li><strong>Counterexample:</strong> a concrete input that breaks your statement — the tool's most useful output.</li>
+  <li><strong>unsat:</strong> no counterexample exists in the checked domain. That is a proof, within the domain.</li>
+</ul>
+
+<p class="small">Full status: <code>docs/verification/README.md</code>. Lesson: <a href="../lessons/0005-three-kinds-of-proof.html">005</a>. Ask me follow-ups. [[RESOURCES.md]]</p>
+</body>
+</html>

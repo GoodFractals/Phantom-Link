@@ -2,6 +2,11 @@
 
 ## Knowledge
 
+- [Lesson 005: Three kinds of proof](lessons/0005-three-kinds-of-proof.html)
+  What TLA+, Z3 and CBMC actually prove, what they don't, and which to reach
+  for. Use for: understanding the verification stack without overclaiming.
+- [Reference: Verification cheat sheet](reference/verification-cheat-sheet.html)
+  Commands and status for each tool — what ran, what is staged.
 - [Reference: The black-box experiment](reference/the-black-box-experiment.html)
   The early story: proving a reliable two-board transport over a proprietary
   Wi-Fi firmware blob before any crypto existed. Use for: explaining what was
