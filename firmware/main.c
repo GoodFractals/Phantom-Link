@@ -1599,7 +1599,7 @@ static int ui_text_width(const char *text) {
 
 /* Exact text origins from the final art: RX (15,2), TX (16,12). */
 #define UI_RX_TEXT_X 15
-#define UI_RX_TEXT_Y 1   /* first ink row; uses the shifted-glyph renderer */
+#define UI_RX_TEXT_Y 3   /* first ink row; uses the shifted-glyph renderer */
 #define UI_TX_TEXT_X 16
 #define UI_TX_TEXT_Y 8
 
