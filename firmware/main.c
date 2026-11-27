@@ -131,7 +131,7 @@ static const UiRect UI_LINK_MARK = { 99, 59, 4, 4 };
  * the hit boxes and the exact visible outlines (no -1/+2 expansion). */
 static const BoxRect alpha_boxes[4][3] = {
     { {6, 21, 30, 31},  {49, 21, 72, 31},  {94, 21, 117, 31} },  // SEND ABC DEF
-    { {7, 32, 29, 42},  {49, 32, 72, 42},  {94, 32, 117, 42} },  // GHI JKL MNO
+    { {7, 32, 29, 42},  {49, 32, 72, 42},  {94, 32, 118, 42} },  // GHI JKL MNO
     { {7, 43, 30, 53},  {49, 43, 73, 53},  {90, 43, 122, 53} },  // PQR STU WXYZ
     { {7, 54, 32, 64},  {52, 55, 70, 64},  {84, 53, 124, 64} }   // 123+ SPC PUNC
 };
@@ -1598,9 +1598,9 @@ static int ui_text_width(const char *text) {
 }
 
 /* Exact text origins from the final art: RX (15,2), TX (16,12). */
-#define UI_RX_TEXT_X 15
+#define UI_RX_TEXT_X 14
 #define UI_RX_TEXT_Y 2   /* first ink row; uses the shifted-glyph renderer */
-#define UI_TX_TEXT_X 16
+#define UI_TX_TEXT_X 15
 #define UI_TX_TEXT_Y 8
 
 static void draw_text_tail(int x, int y, const char *text, const char *prefix,
@@ -1712,7 +1712,7 @@ static void drawMainUI(void) {
 
     /* Final art bakes RX:/TX: into x0..14 of the top rows. Clear only the
      * message strip to the right of those labels, not the whole header. */
-    oled_fill_rect(15, 0, 110, 20, false);
+    oled_fill_rect(14, 0, 111, 20, false);
 
     if (ui_active) {
         BoxRect b = (current_page == 0)
