@@ -1717,8 +1717,10 @@ static void drawMainUI(void) {
                         ? alpha_boxes[cursor_row][cursor_col]
                         : numeric_boxes[cursor_row][cursor_col];
         if (b.x2 > b.x1 && b.y2 > b.y1) {
-            /* Exact extents from the user's table: no expansion, no offset. */
-            oled_draw_box(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
+            /* User's table plus the known one-pixel up/left correction.
+             * oled_draw_box includes its right/bottom edge, so the outline
+             * lands one pixel down/right without this. */
+            oled_draw_box(b.x1 - 1, b.y1 - 1, b.x2 - b.x1, b.y2 - b.y1);
         }
     }
 
