@@ -36,3 +36,6 @@ logs/
 # Editor / vendor SDK checkouts
 .vscode/
 u8g2/
+
+# TLC model-checking state (generated, never commit)
+docs/verification/tla/states/
